@@ -1,0 +1,80 @@
+name: Cubicle
+options:
+  bundleIdPrefix: tech.phin
+  # Matches the Xcode in use, so it does not offer to "update to recommended settings" on every regenerate.
+  xcodeVersion: "27.2"
+  deploymentTarget:
+    macOS: "13.0"
+settings:
+  base:
+    # The release version (`just release` tags v<this>); bump both for each release.
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    # Package.swift is tools-version 5.9, so the code is Swift 5 language mode.
+    SWIFT_VERSION: "5.0"
+packages:
+  # Package.swift: the C event-tap core (ISS) and the socket layer shared with the CLI (CubicleIPC).
+  Cubicle:
+    path: .
+targets:
+  Cubicle:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/InstantSpaceSwitcher
+      - path: Resources
+        buildPhase: resources
+    # A shared scheme, generated every time: without one, Xcode can remember a scheme that a regenerate
+    # removed and then show no way to build or archive the app.
+    scheme: {}
+    configFiles:
+      Debug: Signing.xcconfig
+      Release: Signing.xcconfig
+    dependencies:
+      - package: Cubicle
+        product: ISS
+      - package: Cubicle
+        product: CubicleIPC
+      # The `cubicle` command. It lives in Contents/Helpers (not MacOS): on a case-insensitive disk,
+      # `cubicle` and the app's own `Cubicle` executable would be the same file.
+      - target: CubicleCLI
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: tech.phin.Cubicle
+        PRODUCT_NAME: Cubicle
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Cubicle
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
+        ENABLE_HARDENED_RUNTIME: YES
+        DEAD_CODE_STRIPPING: YES
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleIconFile: AppIcon
+        # A menu bar app: no Dock icon.
+        LSUIElement: true
+        NSHumanReadableCopyright: Copyright © 2026 jurplel
+  CubicleCLI:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/CubicleCLI
+    configFiles:
+      Debug: Signing.xcconfig
+      Release: Signing.xcconfig
+    dependencies:
+      - package: Cubicle
+        product: CubicleIPC
+    settings:
+      base:
+        PRODUCT_NAME: cubicle
+        PRODUCT_BUNDLE_IDENTIFIER: tech.phin.Cubicle.cli
+        ENABLE_HARDENED_RUNTIME: YES
+        SKIP_INSTALL: YES

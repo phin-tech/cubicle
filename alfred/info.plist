@@ -46,7 +46,7 @@
 				<key>escaping</key>
 				<integer>102</integer>
 				<key>keyword</key>
-				<string>cub</string>
+				<string>@</string>
 				<key>queuedelaycustom</key>
 				<integer>1</integer>
 				<key>queuedelayimmediatelyinitially</key>
@@ -59,7 +59,7 @@
 				<string>Asking Cubicle...</string>
 				<key>script</key>
 				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/MacOS/cubicle)"
+CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/Helpers/cubicle)"
 if [ ! -x "$CUBICLE" ]; then
   printf '{"items":[{"title":"Cubicle is not installed","subtitle":"Run: just install","valid":false}]}'
   exit 0
@@ -76,7 +76,7 @@ exec "$CUBICLE" list --alfred "$1"</string>
 				<key>type</key>
 				<integer>0</integer>
 				<key>withspace</key>
-				<true/>
+				<false/>
 			</dict>
 			<key>type</key>
 			<string>alfred.workflow.input.scriptfilter</string>
@@ -94,7 +94,7 @@ exec "$CUBICLE" list --alfred "$1"</string>
 				<integer>102</integer>
 				<key>script</key>
 				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/MacOS/cubicle)"
+CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/Helpers/cubicle)"
 exec "$CUBICLE" go "$1"</string>
 				<key>scriptargtype</key>
 				<integer>1</integer>
@@ -112,7 +112,7 @@ exec "$CUBICLE" go "$1"</string>
 		</dict>
 	</array>
 	<key>readme</key>
-	<string>Type "cub" and part of a Space's name to jump to it. Matching is fuzzy (ino finds innopts) and lists only the Spaces on the display your cursor is on, leaving out the one you are already on. The number of a Space also works.
+	<string>Type "@" and part of a Space's name to jump to it (for example @ino). Matching is fuzzy (ino finds innopts) and lists only the Spaces on the display your cursor is on, leaving out the one you are already on. The number of a Space also works.
 
 Needs the cubicle command: run "just install" in the Cubicle repo (links it to ~/.local/bin and installs the app).</string>
 	<key>uidata</key>

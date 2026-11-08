@@ -22,6 +22,10 @@ final class GeneralSettingsViewController: NSViewController {
   private let showNameInMenuBarCheckbox = NSButton(
     checkboxWithTitle: "Show the Space's name in the menu bar", target: nil, action: nil)
 
+  private let cliButton = NSButton(title: "Install 'cubicle' command", target: nil, action: nil)
+  private let cliStatusLabel = NSTextField(labelWithString: "")
+  private let cliExecutable = CLIInstaller.bundledExecutable()
+
   private let durationPresets = [100, 200, 300, 500, 750, 1000]
   private let animationSpeedOptions = ["Normal", "Fast", "Faster", "Fastest", "Instant"]
   private let animationSpeedValues: [Double] = [40.0, 50.0, 60.0, 80.0, 2000.0]
@@ -37,6 +41,12 @@ final class GeneralSettingsViewController: NSViewController {
 
     setupUI()
     loadSettings()
+    refreshCLIStatus()
+  }
+
+  override func viewWillAppear() {
+    super.viewWillAppear()
+    refreshCLIStatus()
   }
 
   private func setupUI() {
@@ -86,6 +96,15 @@ final class GeneralSettingsViewController: NSViewController {
     overlayDetectionCheckbox.attributedTitle = experimentalTitle
     
     formView.addRow(label: nil, control: overlayDetectionCheckbox)
+    formView.addSectionSpacing()
+
+    // Command line tool
+    cliButton.target = self
+    cliButton.action = #selector(cliButtonClicked)
+    cliStatusLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    cliStatusLabel.textColor = .secondaryLabelColor
+    formView.addRow(label: NSTextField(labelWithString: "Command Line:"), control: cliButton)
+    formView.addRow(label: nil, control: cliStatusLabel)
     formView.addSectionSpacing()
 
     // Animation Speed
@@ -190,6 +209,57 @@ final class GeneralSettingsViewController: NSViewController {
 
     defaults.set(velocity, forKey: "gestureSpeed")
     iss_set_gesture_speed(velocity)
+  }
+
+  private func refreshCLIStatus() {
+    let link = CLIInstaller.defaultLinkURL
+    let path = (link.path as NSString).abbreviatingWithTildeInPath
+    guard let executable = cliExecutable else {
+      cliButton.title = "Install 'cubicle' command"
+      cliButton.isEnabled = false
+      setCLIStatus("Only available when running from Cubicle.app.", isError: false)
+      return
+    }
+
+    cliButton.isEnabled = true
+    switch CLIInstaller.status(link: link, executable: executable) {
+    case .notInstalled:
+      cliButton.title = "Install 'cubicle' command"
+      setCLIStatus("Links \(path). Add that folder to your PATH if the command isn't found.", isError: false)
+    case .installed:
+      cliButton.title = "Remove 'cubicle' command"
+      setCLIStatus("Installed at \(path).", isError: false)
+    case .pointsElsewhere:
+      cliButton.title = "Update 'cubicle' command"
+      setCLIStatus("\(path) points at a different copy of Cubicle.", isError: false)
+    case .broken:
+      cliButton.title = "Update 'cubicle' command"
+      setCLIStatus("\(path) points at a file that no longer exists.", isError: false)
+    case .blocked:
+      cliButton.title = "Install 'cubicle' command"
+      cliButton.isEnabled = false
+      setCLIStatus("\(path) already exists and is not a link, so it was left alone.", isError: true)
+    }
+  }
+
+  private func setCLIStatus(_ text: String, isError: Bool) {
+    cliStatusLabel.stringValue = text
+    cliStatusLabel.textColor = isError ? .systemRed : .secondaryLabelColor
+  }
+
+  @objc private func cliButtonClicked(_ sender: NSButton) {
+    guard let executable = cliExecutable else { return }
+    let link = CLIInstaller.defaultLinkURL
+    do {
+      if CLIInstaller.status(link: link, executable: executable) == .installed {
+        try CLIInstaller.uninstall(link: link)
+      } else {
+        try CLIInstaller.install(link: link, executable: executable)
+      }
+      refreshCLIStatus()
+    } catch {
+      setCLIStatus(error.localizedDescription, isError: true)
+    }
   }
 
   @objc private func showNameInMenuBarChanged(_ sender: NSButton) {

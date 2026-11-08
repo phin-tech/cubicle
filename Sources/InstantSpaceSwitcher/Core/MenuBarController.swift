@@ -13,6 +13,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private var cancellables = Set<AnyCancellable>()
 
   private lazy var baseStatusImage: NSImage? = {
+    // The Cubicle glyph (a 2x2 cubicle grid with one cell filled), shown when there is no Space info to badge.
+    if let url = Bundle.main.url(forResource: "MenuBarGlyph", withExtension: "png"),
+      let glyph = NSImage(contentsOf: url)
+    {
+      glyph.size = NSSize(width: 18, height: 18)
+      glyph.isTemplate = true
+      return glyph
+    }
     let image = NSImage(
       systemSymbolName: "arrow.left.and.right.square", accessibilityDescription: Constants.appName)
     image?.isTemplate = true

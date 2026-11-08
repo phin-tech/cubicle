@@ -24,7 +24,7 @@ func fail(_ message: String) -> Never {
   exit(1)
 }
 
-/// The enclosing .app, found by walking up from this executable (it lives in Cubicle.app/Contents/MacOS).
+/// The enclosing .app, found by walking up from this executable (it lives in Cubicle.app/Contents/Helpers).
 func appBundleURL() -> URL? {
   var url = Bundle.main.executableURL?.resolvingSymlinksInPath()
   while let current = url, current.path != "/" {

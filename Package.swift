@@ -6,7 +6,10 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .executable(name: "InstantSpaceSwitcher", targets: ["InstantSpaceSwitcher"]),
-        .executable(name: "cubicle", targets: ["CubicleCLI"])
+        .executable(name: "cubicle", targets: ["CubicleCLI"]),
+        // Libraries the Xcode project (project.yml) links into the app and the embedded CLI.
+        .library(name: "ISS", targets: ["ISS"]),
+        .library(name: "CubicleIPC", targets: ["CubicleIPC"])
     ],
     targets: [
         .target(

@@ -3,3 +3,6 @@ build/
 .vscode/
 *.app
 .DS_Store
+*.xcodeproj
+DerivedData/
+Signing.local.xcconfig

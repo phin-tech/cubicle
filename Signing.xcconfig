@@ -1,0 +1,14 @@
+// Signing for Cubicle and its embedded `cubicle` tool. Without a local override, builds are signed to run
+// locally (ad-hoc), and macOS forgets the app's Accessibility permission on every rebuild. To sign with your
+// team, create Signing.local.xcconfig (gitignored) next to this file:
+//
+//   DEVELOPMENT_TEAM = <your team id>
+//   CODE_SIGN_IDENTITY = Apple Development
+//
+// Cubicle.xcodeproj is regenerated from project.yml, so team changes made in Xcode's Signing & Capabilities
+// pane do not survive `xcodegen generate`; put them in the local file instead.
+CODE_SIGN_STYLE = Automatic
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+
+#include? "Signing.local.xcconfig"
