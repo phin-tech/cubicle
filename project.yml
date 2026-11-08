@@ -13,6 +13,10 @@ settings:
     # Package.swift is tools-version 5.9, so the code is Swift 5 language mode.
     SWIFT_VERSION: "5.0"
 packages:
+  # In-place updates (Sources/InstantSpaceSwitcher/Core/UpdateChecker.swift). app-release pins the same version.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.0
   # Package.swift: the C event-tap core (ISS) and the socket layer shared with the CLI (CubicleIPC).
   Cubicle:
     path: .
@@ -35,6 +39,7 @@ targets:
         product: ISS
       - package: Cubicle
         product: CubicleIPC
+      - package: Sparkle
       # The `cubicle` command. It lives in Contents/Helpers (not MacOS): on a case-insensitive disk,
       # `cubicle` and the app's own `Cubicle` executable would be the same file.
       - target: CubicleCLI
@@ -61,6 +66,11 @@ targets:
         # A menu bar app: no Dock icon.
         LSUIElement: true
         NSHumanReadableCopyright: Copyright © 2026 jurplel
+        # Sparkle: the appcast is an asset of the newest GitHub release (`just appcast` uploads it), and updates
+        # must be signed by the private key in the Mac App Release 1Password item (sparkle_private_key).
+        SUFeedURL: https://github.com/phin-tech/cubicle/releases/latest/download/appcast.xml
+        SUPublicEDKey: 2mirghhdXOaz0RtSlgkR5MOzQxF+QkubzK9tgq8eO8U=
+        SUEnableAutomaticChecks: true
   CubicleCLI:
     type: tool
     platform: macOS

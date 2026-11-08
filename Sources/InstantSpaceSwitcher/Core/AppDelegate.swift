@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     _ = SpaceNameStore.shared
     SpaceCatalog.shared.startObserving()
     startCommandServer()
+    UpdateChecker.shared.start()
     iss_set_switch_event_callback { event in
       DispatchQueue.main.async {
         OSDWindow.shared.show(

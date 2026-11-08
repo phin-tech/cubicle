@@ -99,6 +99,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     aboutItem.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
     menu.addItem(aboutItem)
 
+    if UpdateChecker.isAvailable {
+      let updatesItem = NSMenuItem(
+        title: "Check for Updates…", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
+      updatesItem.target = self
+      updatesItem.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: nil)
+      menu.addItem(updatesItem)
+    }
+
     let quitItem = NSMenuItem(
       title: "Quit", action: #selector(NSApplication.terminate(_:)),
       keyEquivalent: "q")
@@ -131,6 +139,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     NSApp.orderFrontStandardAboutPanel(options: options)
     // Ensure window comes to front if already open
     NSApp.windows.first(where: { $0.title.contains("About") })?.makeKeyAndOrderFront(nil)
+  }
+
+  @objc private func checkForUpdates(_ sender: Any?) {
+    UpdateChecker.shared.checkForUpdates()
   }
 
   @objc private func switchToSpace(_ sender: NSMenuItem) {

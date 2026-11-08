@@ -25,6 +25,11 @@ final class GeneralSettingsViewController: NSViewController {
   private let cliButton = NSButton(title: "Install 'cubicle' command", target: nil, action: nil)
   private let cliStatusLabel = NSTextField(labelWithString: "")
   private let cliExecutable = CLIInstaller.bundledExecutable()
+  private let autoUpdateCheckbox = NSButton(
+    checkboxWithTitle: "Automatically check for updates", target: nil, action: nil)
+  private let betaUpdatesCheckbox = NSButton(
+    checkboxWithTitle: "Include beta versions", target: nil, action: nil)
+  private let checkNowButton = NSButton(title: "Check for Updates…", target: nil, action: nil)
 
   private let durationPresets = [100, 200, 300, 500, 750, 1000]
   private let animationSpeedOptions = ["Normal", "Fast", "Faster", "Fastest", "Instant"]
@@ -98,6 +103,20 @@ final class GeneralSettingsViewController: NSViewController {
     formView.addRow(label: nil, control: overlayDetectionCheckbox)
     formView.addSectionSpacing()
 
+    // Updates (Sparkle; not in the SwiftPM development build)
+    if UpdateChecker.isAvailable {
+      autoUpdateCheckbox.target = self
+      autoUpdateCheckbox.action = #selector(autoUpdateChanged)
+      betaUpdatesCheckbox.target = self
+      betaUpdatesCheckbox.action = #selector(betaUpdatesChanged)
+      checkNowButton.target = self
+      checkNowButton.action = #selector(checkNowClicked)
+      formView.addRow(label: NSTextField(labelWithString: "Updates:"), control: autoUpdateCheckbox)
+      formView.addRow(label: nil, control: betaUpdatesCheckbox)
+      formView.addRow(label: nil, control: checkNowButton)
+      formView.addSectionSpacing()
+    }
+
     // Command line tool
     cliButton.target = self
     cliButton.action = #selector(cliButtonClicked)
@@ -147,6 +166,10 @@ final class GeneralSettingsViewController: NSViewController {
 
     hideMenuBarIconCheckbox.state = defaults.bool(forKey: "hideMenuBarIcon") ? .on : .off
     showNameInMenuBarCheckbox.state = MenuBarLabel.isEnabled ? .on : .off
+    if UpdateChecker.isAvailable {
+      autoUpdateCheckbox.state = UpdateChecker.shared.automaticChecks ? .on : .off
+      betaUpdatesCheckbox.state = UpdateChecker.shared.betaUpdates ? .on : .off
+    }
     swipeOverrideCheckbox.state = defaults.bool(forKey: "swipeOverride") ? .on : .off
 
     let animationSpeedValue = defaults.double(forKey: "gestureSpeed")
@@ -209,6 +232,18 @@ final class GeneralSettingsViewController: NSViewController {
 
     defaults.set(velocity, forKey: "gestureSpeed")
     iss_set_gesture_speed(velocity)
+  }
+
+  @objc private func autoUpdateChanged(_ sender: NSButton) {
+    UpdateChecker.shared.automaticChecks = sender.state == .on
+  }
+
+  @objc private func betaUpdatesChanged(_ sender: NSButton) {
+    UpdateChecker.shared.betaUpdates = sender.state == .on
+  }
+
+  @objc private func checkNowClicked(_ sender: NSButton) {
+    UpdateChecker.shared.checkForUpdates()
   }
 
   private func refreshCLIStatus() {
