@@ -4,6 +4,9 @@
 # Signing.local.xcconfig (gitignored; see Signing.xcconfig). With a real team the app's identity is the same on
 # every build, so macOS keeps its Accessibility permission across rebuilds; ad-hoc signing loses it each time.
 
+# Release recipes (doctor, notes, ship, ...), from apple-template. Run `just --list`.
+import 'release.just'
+
 derived     := "build/xcode"
 # The Debug app: what the dev recipes (relaunch, cli, signature) use.
 app         := derived / "Build/Products/Debug/Cubicle.app"

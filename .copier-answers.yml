@@ -1,0 +1,23 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v0.4.1
+_src_path: /Users/sphinizy/src/github.com/phin-tech/apple-template
+app_name: Cubicle
+app_slug: cubicle
+app_store: false
+build_settings: ''
+bundle_id: tech.phin.Cubicle
+bundle_prefix: tech.phin
+description: Instant, named, searchable Spaces for macOS
+devices: false
+downloads: true
+github_owner: phin-tech
+github_releases: true
+github_repo: phin-tech/cubicle
+homebrew_tap: phin-tech/homebrew-tap
+install_on_macs: false
+macos_min: '13.0'
+op_item: op://Development/lc6wrq7lltjd47uue26cdxttzu
+scheme: Cubicle
+scope: release
+several_apps: false
+team_id: J35P7AJDN7
