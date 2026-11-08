@@ -133,6 +133,8 @@ final class KeyboardShortcutsViewController: NSViewController {
       .store(in: &cancellables)
     store.$spaceLastSpaceHotkey.receive(on: RunLoop.main).sink { [weak self] _ in self?.loadShortcuts() }
       .store(in: &cancellables)
+    store.$showGridHotkey.receive(on: RunLoop.main).sink { [weak self] _ in self?.loadShortcuts() }
+      .store(in: &cancellables)
     store.$enabledStates.receive(on: RunLoop.main).sink { [weak self] _ in self?.loadShortcuts() }
       .store(in: &cancellables)
   }
@@ -249,6 +251,7 @@ extension KeyboardShortcutsViewController: NSTableViewDelegate {
     case .space15: defaultCombination = .defaultForSpace(15)
     case .space16: defaultCombination = .defaultForSpace(16)
     case .lastSpace: defaultCombination = .defaultLastSpace
+    case .showGrid: defaultCombination = .defaultShowGrid
     }
     store.update(defaultCombination, for: identifier)
   }

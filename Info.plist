@@ -5,11 +5,11 @@
     <key>CFBundleExecutable</key>
     <string>InstantSpaceSwitcher</string>
     <key>CFBundleIdentifier</key>
-    <string>com.interversehq.InstantSpaceSwitcher</string>
+    <string>tech.phin.Cubicle</string>
     <key>CFBundleName</key>
-    <string>InstantSpaceSwitcher</string>
+    <string>Cubicle</string>
     <key>CFBundleDisplayName</key>
-    <string>InstantSpaceSwitcher</string>
+    <string>Cubicle</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

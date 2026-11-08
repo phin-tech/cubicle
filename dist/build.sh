@@ -20,7 +20,8 @@ for arg in "$@"; do
   esac
 done
 
-PRODUCT_NAME="InstantSpaceSwitcher"
+PRODUCT_NAME="InstantSpaceSwitcher"  # internal executable/module name, kept for upstream merges
+APP_NAME="Cubicle"
 BUILD_DIR="build"
 
 if [[ "$CLEAN" == true ]]; then
@@ -29,7 +30,7 @@ if [[ "$CLEAN" == true ]]; then
 fi
 
 BUILD_PATH="${BUILD_DIR}/${BUILD_CONFIG}"
-APP_BUNDLE="${BUILD_DIR}/${PRODUCT_NAME}.app"
+APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
 
 # Build arm64 and x86_64 in parallel
 echo "Building arm64 and x86_64 in parallel..."

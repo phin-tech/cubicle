@@ -1,4 +1,18 @@
-# InstantSpaceSwitcher
+# Cubicle
+
+**Cubicle Window Manager**: instant, named, searchable Spaces for macOS.
+
+Cubicle is a fork of [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) by jurplel (MIT licensed; see `LICENSE`). It builds on the custom Space names from [PR #111](https://github.com/jurplel/InstantSpaceSwitcher/pull/111) and adds a summoned grid with type-to-search.
+
+- **Space grid** (default Ctrl+Option+Cmd+Space): a grid of the Spaces on the display under your cursor, with arrow-key, number-key and click navigation.
+- **Search by name**: type to filter. Matching is fuzzy ("ino" finds "innopts") and ignores the Space you are already on.
+- **Custom Space names**: Settings > Spaces.
+
+The install and build instructions below are inherited from InstantSpaceSwitcher and refer to its releases and Homebrew cask. To run Cubicle, build from source; the app is produced at `./build/Cubicle.app`.
+
+---
+
+# InstantSpaceSwitcher (upstream README)
 
 Native instant workspace switching on macOS. No more waiting for animations.
 
@@ -41,7 +55,7 @@ Pre-built binaries are available through Github Releases [here](https://github.c
 git clone https://github.com/jurplel/InstantSpaceSwitcher
 cd InstantSpaceSwitcher
 ./dist/build.sh
-open ./build/InstantSpaceSwitcher.app
+open ./build/Cubicle.app
 ```
 
 ### Troubleshooting / First time startup

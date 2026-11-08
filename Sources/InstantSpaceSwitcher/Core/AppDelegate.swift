@@ -270,6 +270,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     hotkeyStore.$spaceLastSpaceHotkey.receive(on: RunLoop.main).sink { [weak self] in
       self?.registerHotkey(for: .lastSpace, combination: $0)
     }.store(in: &cancellables)
+    hotkeyStore.$showGridHotkey.receive(on: RunLoop.main).sink { [weak self] in
+      self?.registerHotkey(for: .showGrid, combination: $0)
+    }.store(in: &cancellables)
 
     hotkeyStore.$enabledStates.receive(on: RunLoop.main).sink { [weak self] _ in
       guard let self = self else { return }
@@ -341,6 +344,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.performSpaceSwitchToIndex(15)
       case .lastSpace:
         self.performSpaceLastSpace()
+      case .showGrid:
+        SpaceGridWindow.shared.toggle()
       }
     }
   }

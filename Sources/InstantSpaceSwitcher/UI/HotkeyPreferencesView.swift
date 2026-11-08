@@ -296,6 +296,8 @@ final class HotkeyPreferencesView: NSView {
       store.update(.defaultForSpace(16), for: .space16)
     case .lastSpace:
       store.update(.defaultLastSpace, for: .lastSpace)
+    case .showGrid:
+      store.update(.defaultShowGrid, for: .showGrid)
     }
     setStatus("Reset \(identifier.displayName) shortcut.", color: .labelColor)
   }
