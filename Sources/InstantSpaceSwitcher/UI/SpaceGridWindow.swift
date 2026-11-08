@@ -112,19 +112,9 @@ final class SpaceGridWindow {
   }
 
   func show() {
-    var info = ISSSpaceInfo()
-    guard iss_get_space_info(&info), info.spaceCount > 0 else {
+    guard let (cells, info) = Self.currentCells() else {
       NSSound.beep()
       return
-    }
-
-    SpaceCatalog.shared.refresh()
-    let displayID = stringFromCStringBuffer(info.displayID)
-    let count = Int(info.spaceCount)
-    let cells = (0..<count).map { index -> SpaceGridCell in
-      let identity = SpaceCatalog.shared.identity(displayIdentifier: displayID, index: UInt32(index))
-      let name = SpaceNameStore.shared.name(for: identity?.key)
-      return SpaceGridCell(index: index, title: name ?? String(index + 1), hasCustomName: name != nil)
     }
 
     let screen = Self.screen(for: info.screenID) ?? NSScreen.main
@@ -146,6 +136,21 @@ final class SpaceGridWindow {
     self.panel = panel
     panel.makeKeyAndOrderFront(nil)
     panel.makeFirstResponder(view.cellsView)
+  }
+
+  /// The cells for the display under the cursor, with that display's info, or nil if unavailable.
+  static func currentCells() -> (cells: [SpaceGridCell], info: ISSSpaceInfo)? {
+    var info = ISSSpaceInfo()
+    guard iss_get_space_info(&info), info.spaceCount > 0 else { return nil }
+
+    SpaceCatalog.shared.refresh()
+    let displayID = stringFromCStringBuffer(info.displayID)
+    let cells = (0..<Int(info.spaceCount)).map { index -> SpaceGridCell in
+      let identity = SpaceCatalog.shared.identity(displayIdentifier: displayID, index: UInt32(index))
+      let name = SpaceNameStore.shared.name(for: identity?.key)
+      return SpaceGridCell(index: index, title: name ?? String(index + 1), hasCustomName: name != nil)
+    }
+    return (cells, info)
   }
 
   private func activate(_ index: Int) {

@@ -5,12 +5,14 @@ import ISS
 struct SpaceDescription: Equatable {
   let index: UInt32
   let identity: SpaceIdentity
+  var spaceID: UInt64 = 0
 }
 
 struct SpaceDisplay: Equatable {
   let identifier: String
   let name: String
   let spaces: [SpaceDescription]
+  var currentSpaceID: UInt64? = nil
 }
 
 @MainActor
@@ -64,12 +66,15 @@ final class SpaceCatalog {
         var identity = ISSSpaceIdentity()
         guard iss_get_space_identity(spaces as CFArray, UInt32(index), &identity) else { return nil }
         return SpaceDescription(
-          index: UInt32(index), identity: SpaceIdentity(displayIdentifier: identifier, identity: identity))
+          index: UInt32(index), identity: SpaceIdentity(displayIdentifier: identifier, identity: identity),
+          spaceID: identity.spaceID)
       }
       return SpaceDisplay(
         identifier: identifier,
         name: separateSpaces ? (screenNames[identifier.lowercased()] ?? "Display \(offset + 1)") : "All Displays",
-        spaces: descriptions)
+        spaces: descriptions,
+        currentSpaceID: (display["Current Space"] as? [String: Any])
+          .flatMap { ($0["ManagedSpaceID"] as? NSNumber)?.uint64Value })
     }
   }
 

@@ -6,7 +6,7 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [
         .executable(name: "InstantSpaceSwitcher", targets: ["InstantSpaceSwitcher"]),
-        .executable(name: "ISSCli", targets: ["ISSCli"])
+        .executable(name: "cubicle", targets: ["CubicleCLI"])
     ],
     targets: [
         .target(
@@ -18,18 +18,18 @@ let package = Package(
                 .linkedFramework("IOKit")
             ]
         ),
+        .target(name: "CubicleIPC"),
         .executableTarget(
             name: "InstantSpaceSwitcher",
-            dependencies: ["ISS"]
+            dependencies: ["ISS", "CubicleIPC"]
         ),
         .executableTarget(
-            name: "ISSCli",
-            dependencies: ["ISS"],
-            path: "Sources/ISSCli"
+            name: "CubicleCLI",
+            dependencies: ["CubicleIPC"]
         ),
         .testTarget(
             name: "ISSTests",
-            dependencies: ["ISS", "InstantSpaceSwitcher"]
+            dependencies: ["ISS", "InstantSpaceSwitcher", "CubicleIPC"]
         )
     ]
 )

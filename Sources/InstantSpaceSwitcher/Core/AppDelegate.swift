@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Combine
+import CubicleIPC
 import ISS
 
 @MainActor
@@ -13,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var cancellables = Set<AnyCancellable>()
   private var spaceChangeObserver: Any?
   private var appActivationObserver: Any?
+  private var commandServer: CubicleIPCServer?
 
   func applicationWillFinishLaunching(_ notification: Notification) {
     NSAppleEventManager.shared().setEventHandler(
@@ -50,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     _ = SpaceNameStore.shared
     SpaceCatalog.shared.startObserving()
+    startCommandServer()
     iss_set_switch_event_callback { event in
       DispatchQueue.main.async {
         OSDWindow.shared.show(
@@ -72,10 +75,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    commandServer?.stop()
     iss_set_switch_event_callback(nil)
     iss_destroy()
     stopObservingSpaceChanges()
     stopObservingAppActivation()
+  }
+
+  /// Serves the `cubicle` CLI. Requests run here so they use this app's Accessibility permission.
+  private func startCommandServer() {
+    let server = CubicleIPCServer { request in
+      DispatchQueue.main.sync { MainActor.assumeIsolated { CommandHandler.handle(request) } }
+    }
+    do {
+      try server.start()
+      commandServer = server
+    } catch {
+      print("Cubicle command server failed to start: \(error.localizedDescription)")
+    }
   }
 
   private func retryIssInit() {

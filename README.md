@@ -7,6 +7,7 @@ Cubicle is a fork of [InstantSpaceSwitcher](https://github.com/jurplel/InstantSp
 - **Space grid** (default Ctrl+Option+Cmd+Space): a grid of the Spaces on the display under your cursor, with arrow-key, number-key and click navigation.
 - **Search by name**: type to filter. Matching is fuzzy ("ino" finds "innopts") and ignores the Space you are already on.
 - **Custom Space names**: Settings > Spaces.
+- **`cubicle` CLI**: `cubicle list`, `cubicle go <name|number>`, `cubicle left|right`, `cubicle grid`. It talks to the running app over a private local socket, so it needs no Accessibility permission of its own, and it starts Cubicle if it is not running. It is at `Cubicle.app/Contents/MacOS/cubicle`; symlink it onto your `PATH` to use it anywhere.
 
 The install and build instructions below are inherited from InstantSpaceSwitcher and refer to its releases and Homebrew cask. To run Cubicle, build from source; the app is produced at `./build/Cubicle.app`.
 
@@ -25,7 +26,7 @@ https://github.com/user-attachments/assets/037422c9-3fb7-41cd-8da7-58d28c4c8eff
 - Custom space names in the switching overlay and Spaces menu
 - Free
 
-A simple CLI is provided (`InstantSpaceSwitcher.app/Contents/MacOS/ISSCli --help`)
+A CLI is provided (`Cubicle.app/Contents/MacOS/cubicle help`). See the `cubicle` command in the Cubicle section above.
 
 ## Custom space names
 
