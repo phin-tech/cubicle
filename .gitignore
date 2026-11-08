@@ -6,3 +6,4 @@ build/
 *.xcodeproj
 DerivedData/
 Signing.local.xcconfig
+.cloudflare/

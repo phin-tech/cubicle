@@ -1,7 +1,17 @@
 # Cubicle icon
 
-The mark is a lightly isometric 2×2 office-partition grid: three slate-blue cubicles and one warm brass/amber cubicle identify the current Space. The twilight squircle, fabric texture, brass rails, and soft glow echo the supplied 1990s software-box references while keeping the silhouette readable at small sizes.
+The app icon is a single open-front cubicle: slate-blue fabric walls with brass trim, a wooden desk and a warm amber
+monitor glowing on a deep violet tile. It echoes the store's brass-and-wood look (the Phin Tech Store icon) and the
+airbrushed 1990s box art.
 
-`AppIcon-1024.png` was generated with OpenAI's built-in image generation tool using the three `refs/` images as style references, with an explicit transparent macOS-squircle composition and no text, characters, or UI chrome. The generated RGBA PNG was resized to exactly 1024×1024 with macOS `sips`; `alfred-icon.png` was derived from that master with `sips -z 512 512`.
+It was chosen from three directions (one cubicle, a fan of index tabs, a flat 2x2 grid) generated with OpenAI's
+built-in image generation tool, using the store's box art as style references. The first icon (an isometric 2x2 grid of
+cubicles under clouds) is in git history.
 
-`menubar-template.png` was drawn directly as a black RGBA glyph by `render-menubar.swift` using AppKit. Reproduce it from this directory with: `SWIFT_MODULECACHE_PATH=/tmp/cubicle-swift-cache CLANG_MODULE_CACHE_PATH=/tmp/cubicle-swift-cache swift out/render-menubar.swift out/menubar-template.png`.
+- `AppIcon-1024.png` is the master: 1024x1024 RGBA, in the macOS squircle with transparent corners.
+- `../Resources/AppIcon.icns` is built from it by `just icons` (`dist/make-icns.sh`).
+- `../alfred/icon.png` is the same art at 512 px, for the Alfred workflow.
+- `../Resources/MenuBarGlyph.png` is a separate single-colour template image (a 2x2 grid with one cell filled),
+  drawn by `render-menubar.swift`; `swift assets/render-menubar.swift out.png` redraws it.
+
+Generated art has its own terms; check they suit how the app is distributed.
