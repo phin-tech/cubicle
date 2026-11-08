@@ -93,6 +93,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     menu.addItem(NSMenuItem.separator())
 
+    let welcomeItem = NSMenuItem(
+      title: "Welcome to Cubicle…", action: #selector(showWelcome(_:)), keyEquivalent: "")
+    welcomeItem.target = self
+    welcomeItem.image = NSImage(systemSymbolName: "hand.wave", accessibilityDescription: nil)
+    menu.addItem(welcomeItem)
+
     let aboutItem = NSMenuItem(
       title: "About", action: #selector(openAbout(_:)), keyEquivalent: "")
     aboutItem.target = self
@@ -139,6 +145,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     NSApp.orderFrontStandardAboutPanel(options: options)
     // Ensure window comes to front if already open
     NSApp.windows.first(where: { $0.title.contains("About") })?.makeKeyAndOrderFront(nil)
+  }
+
+  @objc private func showWelcome(_ sender: Any?) {
+    OnboardingWindowController.shared.show()
   }
 
   @objc private func checkForUpdates(_ sender: Any?) {
@@ -273,6 +283,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     let identity = SpaceCatalog.shared.identity(
       displayIdentifier: stringFromCStringBuffer(info.displayID), index: info.currentIndex)
     return MenuBarLabel.title(forName: SpaceNameStore.shared.name(for: identity?.key))
+  }
+
+  /// A small popover under the menu bar icon, so a new user can see where Cubicle lives.
+  func pointToStatusItem() {
+    guard let button = statusItem.button, statusItem.isVisible else { return }
+    let popover = NSPopover()
+    popover.behavior = .transient
+    let label = NSTextField(labelWithString: "Cubicle lives here. Click the icon for its menu.")
+    label.frame = NSRect(x: 16, y: 12, width: label.fittingSize.width, height: label.fittingSize.height)
+    let content = NSViewController()
+    content.view = NSView(frame: NSRect(x: 0, y: 0, width: label.frame.width + 32, height: label.frame.height + 24))
+    content.view.addSubview(label)
+    popover.contentViewController = content
+    popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 5) { popover.close() }
   }
 
   func setIconVisible(_ visible: Bool) {

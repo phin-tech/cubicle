@@ -274,9 +274,9 @@ extension KeyboardShortcutsViewController: NSTableViewDelegate {
   private func handleRecordingResult(
     _ combination: HotkeyCombination, for identifier: HotkeyIdentifier
   ) {
-    if let otherIdentifier = HotkeyIdentifier.allCases.first(where: {
-      $0 != identifier && store.combination(for: $0) == combination
-    }) {
+    if let otherIdentifier = HotkeyConflict.identifier(
+      using: combination, among: store.assignments, excluding: identifier)
+    {
       NSSound.beep()
       let alert = NSAlert()
       alert.messageText = "Shortcut already in use"

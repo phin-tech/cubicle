@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CubicleIPC
 import ISS
 
@@ -12,6 +13,13 @@ enum CommandHandler {
     case "go": return go(request.argument ?? "")
     case "left": return step(ISSDirectionLeft)
     case "right": return step(ISSDirectionRight)
+    case "new-space":
+      guard AXIsProcessTrusted() else {
+        return CubicleResponse(ok: false, message: SpaceCreator.Failure.notTrusted.message)
+      }
+      // Mission Control takes a second or two to open and close, so this does not wait for it.
+      SpaceCreator.addSpace { _ in }
+      return CubicleResponse(ok: true, message: "Adding a Space (Mission Control opens briefly).")
     case "grid":
       SpaceGridWindow.shared.show()
       return CubicleResponse(ok: true)

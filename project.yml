@@ -48,6 +48,22 @@ targets:
         copy:
           destination: wrapper
           subpath: Contents/Helpers
+    # The Alfred workflow (alfred/), zipped into the app so the walkthrough can offer to add it. This runs after the
+    # resources are copied and before the bundle is signed, so the signature covers it. Keep inputFiles in step with
+    # the files in alfred/.
+    postBuildScripts:
+      - name: Bundle the Alfred workflow
+        inputFiles:
+          - $(SRCROOT)/alfred/info.plist
+          - $(SRCROOT)/alfred/icon.png
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Cubicle.alfredworkflow
+        script: |
+          set -euo pipefail
+          out="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Cubicle.alfredworkflow"
+          rm -f "$out"
+          cd "$SRCROOT/alfred"
+          /usr/bin/zip -qrX "$out" info.plist icon.png
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: tech.phin.Cubicle

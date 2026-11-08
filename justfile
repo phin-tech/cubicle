@@ -87,6 +87,11 @@ dev: test debug relaunch
 status:
     @pgrep -fl "Cubicle.app" || echo "Cubicle is not running"
 
+# Forget that the walkthrough was shown, then relaunch the Debug app to see it again
+onboarding: quit
+    -defaults delete {{bundle}} onboardingCompleted
+    open {{app}}
+
 # ---- cli --------------------------------------------------------------------
 
 # Run the Debug build's cubicle CLI, e.g. `just cli list` or `just cli go innopts`

@@ -13,6 +13,7 @@ let usage = """
     go <name|number>    Switch to a Space by fuzzy name or one-based number
     left | right        Switch one Space left or right
     grid                Open the Space grid
+    new-space           Add a Space (Mission Control opens briefly)
     help                Show this help
 
   Commands run inside the Cubicle app, which holds the Accessibility permission, so this tool
@@ -165,6 +166,11 @@ case "go":
   guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { fail("Usage: cubicle go <name|number>") }
   let response = send(CubicleRequest(command: "go", argument: query))
   guard response.ok else { fail(response.message ?? "go failed") }
+  if let message = response.message { print(message) }
+
+case "new-space":
+  let response = send(CubicleRequest(command: "new-space"))
+  guard response.ok else { fail(response.message ?? "new-space failed") }
   if let message = response.message { print(message) }
 
 case "left", "right", "grid":

@@ -54,6 +54,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     SpaceCatalog.shared.startObserving()
     startCommandServer()
     UpdateChecker.shared.start()
+    OnboardingWindowController.shared.onFinish = { [weak self] in self?.menuBarController.pointToStatusItem() }
+    // After the menu bar item exists, so the welcome window can point at it.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { OnboardingWindowController.shared.showIfFirstRun() }
     iss_set_switch_event_callback { event in
       DispatchQueue.main.async {
         OSDWindow.shared.show(

@@ -633,3 +633,33 @@ extension NSEvent.ModifierFlags {
     return mask
   }
 }
+
+/// Which action already uses a shortcut. Settings and the walkthrough both ask this before accepting a new one.
+enum HotkeyConflict {
+  static func identifier(
+    using combination: HotkeyCombination, among assignments: [(HotkeyIdentifier, HotkeyCombination)],
+    excluding identifier: HotkeyIdentifier
+  ) -> HotkeyIdentifier? {
+    assignments.first { $0.0 != identifier && $0.1 == combination }?.0
+  }
+}
+
+extension HotkeyIdentifier {
+  /// The shortcut this action has before you change it.
+  var defaultCombination: HotkeyCombination {
+    switch self {
+    case .left: return .defaultLeft
+    case .right: return .defaultRight
+    case .lastSpace: return .defaultLastSpace
+    case .showGrid: return .defaultShowGrid
+    default: return .defaultForSpace(Int(rawValue.dropFirst("space".count)) ?? 1)
+    }
+  }
+}
+
+extension HotkeyStore {
+  /// Every action with its current shortcut.
+  var assignments: [(HotkeyIdentifier, HotkeyCombination)] {
+    HotkeyIdentifier.allCases.map { ($0, combination(for: $0)) }
+  }
+}
