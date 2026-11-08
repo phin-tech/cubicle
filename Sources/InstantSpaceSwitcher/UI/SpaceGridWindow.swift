@@ -80,6 +80,16 @@ enum SpaceGridLayout {
     return best?.index
   }
 
+  /// Indices into `titles` that match `query`, best first (ties keep their original order).
+  /// An empty query returns every index in order.
+  static func ranked(titles: [String], query: String) -> [Int] {
+    guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return Array(titles.indices) }
+    return titles.indices
+      .compactMap { index in score(titles[index], query: query).map { (index, $0) } }
+      .sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0 < $1.0 }
+      .map { $0.0 }
+  }
+
   /// Steps through `matches` cyclically from `selected`; an unmatched selection jumps to the first match.
   static func step(from selected: Int, by delta: Int, among matches: [Int]) -> Int {
     guard !matches.isEmpty else { return selected }

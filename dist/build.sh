@@ -96,8 +96,24 @@ echo "Injecting git SHA: ${GIT_SHA}"
 /usr/libexec/PlistBuddy -c "Set :GitCommitHash ${GIT_SHA}" "${APP_BUNDLE}/Contents/Info.plist"
 
 echo ""
-echo "Signing (ad-hoc)..."
-codesign --force --deep --sign - "${APP_BUNDLE}"
+# SIGN_IDENTITY is a codesigning identity name or hash (see `security find-identity -v -p codesigning`).
+# With a real identity the app's designated requirement is the bundle ID plus the signing team, which is the
+# same on every build, so macOS keeps granting it Accessibility across rebuilds. Unset (or "-") signs ad-hoc,
+# whose requirement is the build's hash, so permissions are lost on every rebuild.
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+if [[ "${SIGN_IDENTITY}" == "-" ]]; then
+  echo "Signing (ad-hoc)..."
+  codesign --force --deep --sign - "${APP_BUNDLE}"
+else
+  echo "Signing with: ${SIGN_IDENTITY}"
+  # Inner executables first, then the bundle. --timestamp=none keeps local builds offline and repeatable;
+  # notarization needs a secure timestamp (drop it for release builds).
+  for binary in "${APP_BUNDLE}/Contents/MacOS/cubicle" "${APP_BUNDLE}/Contents/MacOS/${PRODUCT_NAME}"; do
+    codesign --force --sign "${SIGN_IDENTITY}" --options runtime --timestamp=none "${binary}"
+  done
+  codesign --force --sign "${SIGN_IDENTITY}" --options runtime --timestamp=none "${APP_BUNDLE}"
+fi
+codesign --verify --strict --verbose=2 "${APP_BUNDLE}"
 
 echo ""
 echo "App bundled at $(pwd)/${APP_BUNDLE} (${BUILD_CONFIG})"

@@ -19,6 +19,8 @@ final class GeneralSettingsViewController: NSViewController {
     checkboxWithTitle: "Launch at login", target: nil, action: nil)
   private let hideMenuBarIconCheckbox = NSButton(
     checkboxWithTitle: "Hide menu bar icon", target: nil, action: nil)
+  private let showNameInMenuBarCheckbox = NSButton(
+    checkboxWithTitle: "Show the Space's name in the menu bar", target: nil, action: nil)
 
   private let durationPresets = [100, 200, 300, 500, 750, 1000]
   private let animationSpeedOptions = ["Normal", "Fast", "Faster", "Fastest", "Instant"]
@@ -59,6 +61,8 @@ final class GeneralSettingsViewController: NSViewController {
     launchAtLoginCheckbox.action = #selector(launchAtLoginChanged)
     hideMenuBarIconCheckbox.target = self
     hideMenuBarIconCheckbox.action = #selector(hideMenuBarIconChanged)
+    showNameInMenuBarCheckbox.target = self
+    showNameInMenuBarCheckbox.action = #selector(showNameInMenuBarChanged)
 
     // Populate data
     for duration in durationPresets { osdDurationPopup.addItem(withTitle: "\(duration)ms") }
@@ -68,6 +72,7 @@ final class GeneralSettingsViewController: NSViewController {
     let systemLabel = NSTextField(labelWithString: "System:")
     formView.addRow(label: systemLabel, control: launchAtLoginCheckbox)
     formView.addRow(label: nil, control: hideMenuBarIconCheckbox)
+    formView.addRow(label: nil, control: showNameInMenuBarCheckbox)
     formView.addRow(label: nil, control: swipeOverrideCheckbox)
 
     let experimentalTitle = NSMutableAttributedString(string: "Enable Mission Control/Exposé detection\n")
@@ -122,6 +127,7 @@ final class GeneralSettingsViewController: NSViewController {
     showOSDInMissionControlCheckbox.state = defaults.bool(forKey: "showOSDInMissionControl") ? .on : .off
 
     hideMenuBarIconCheckbox.state = defaults.bool(forKey: "hideMenuBarIcon") ? .on : .off
+    showNameInMenuBarCheckbox.state = MenuBarLabel.isEnabled ? .on : .off
     swipeOverrideCheckbox.state = defaults.bool(forKey: "swipeOverride") ? .on : .off
 
     let animationSpeedValue = defaults.double(forKey: "gestureSpeed")
@@ -184,6 +190,11 @@ final class GeneralSettingsViewController: NSViewController {
 
     defaults.set(velocity, forKey: "gestureSpeed")
     iss_set_gesture_speed(velocity)
+  }
+
+  @objc private func showNameInMenuBarChanged(_ sender: NSButton) {
+    // The menu bar controller refreshes itself when defaults change.
+    defaults.set(sender.state == .on, forKey: MenuBarLabel.defaultsKey)
   }
 
   @objc private func hideMenuBarIconChanged(_ sender: NSButton) {

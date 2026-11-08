@@ -7,10 +7,16 @@ import Foundation
 public struct CubicleRequest: Codable, Equatable {
   public var command: String
   public var argument: String?
+  /// For `list`: only the display under the cursor.
+  public var here: Bool?
+  /// For `list`: keep only Spaces matching this fuzzy query, best match first.
+  public var query: String?
 
-  public init(command: String, argument: String? = nil) {
+  public init(command: String, argument: String? = nil, here: Bool? = nil, query: String? = nil) {
     self.command = command
     self.argument = argument
+    self.here = here
+    self.query = query
   }
 }
 

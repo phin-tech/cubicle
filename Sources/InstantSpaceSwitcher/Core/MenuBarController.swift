@@ -26,10 +26,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     statusItem.menu = createMenu()
     updateStatusItemAppearance()
     NotificationCenter.default.publisher(for: .spaceNamesDidChange)
-      .sink { [weak self] _ in self?.updateSpacesMenuItems() }
+      .sink { [weak self] _ in
+        self?.updateSpacesMenuItems()
+        self?.updateStatusItemAppearance()
+      }
       .store(in: &cancellables)
     SpaceCatalog.shared.$displays.dropFirst().receive(on: RunLoop.main)
-      .sink { [weak self] _ in self?.updateSpacesMenuItems() }
+      .sink { [weak self] _ in
+        self?.updateSpacesMenuItems()
+        self?.updateStatusItemAppearance()
+      }
+      .store(in: &cancellables)
+    // Picks up the "show name in menu bar" setting changing.
+    NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+      .receive(on: RunLoop.main)
+      .sink { [weak self] _ in self?.updateStatusItemAppearance() }
       .store(in: &cancellables)
   }
 
@@ -220,8 +231,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     guard let button = statusItem.button else { return }
 
     button.font = nil
-    button.title = ""
-    button.imagePosition = .imageOnly
+    let label = currentSpaceLabel()
+    button.title = label.map { " " + $0 } ?? ""
+    button.imagePosition = label == nil ? .imageOnly : .imageLeading
 
     let icon: NSImage?
     if let info = cachedSpaceInfo {
@@ -233,6 +245,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     let finalIcon = icon ?? baseStatusImage
     finalIcon?.isTemplate = true
     button.image = finalIcon
+  }
+
+  /// The current Space's custom name for the menu bar, or nil to show only the number badge.
+  private func currentSpaceLabel() -> String? {
+    guard MenuBarLabel.isEnabled, let info = cachedSpaceInfo else { return nil }
+    let identity = SpaceCatalog.shared.identity(
+      displayIdentifier: stringFromCStringBuffer(info.displayID), index: info.currentIndex)
+    return MenuBarLabel.title(forName: SpaceNameStore.shared.name(for: identity?.key))
   }
 
   func setIconVisible(_ visible: Bool) {

@@ -99,4 +99,11 @@ final class SpaceGridLayoutTests: XCTestCase {
     XCTAssertEqual(SpaceGridLayout.bestMatch(in: all, query: "mail", among: [0, 1]), 0)
     XCTAssertNil(SpaceGridLayout.bestMatch(in: all, query: "zzz", among: hits))
   }
+
+  func testRankedOrdersBestMatchFirst() {
+    let titles = ["xxmailxx", "m-a-i-l", "mail", "other"]
+    XCTAssertEqual(SpaceGridLayout.ranked(titles: titles, query: "mail"), [2, 0, 1])
+    XCTAssertEqual(SpaceGridLayout.ranked(titles: titles, query: ""), [0, 1, 2, 3])
+    XCTAssertEqual(SpaceGridLayout.ranked(titles: titles, query: "zzz"), [])
+  }
 }

@@ -8,7 +8,7 @@ import ISS
 enum CommandHandler {
   static func handle(_ request: CubicleRequest) -> CubicleResponse {
     switch request.command {
-    case "list": return list()
+    case "list": return list(request)
     case "go": return go(request.argument ?? "")
     case "left": return step(ISSDirectionLeft)
     case "right": return step(ISSDirectionRight)
@@ -20,10 +20,20 @@ enum CommandHandler {
     }
   }
 
-  private static func list() -> CubicleResponse {
+  private static func list(_ request: CubicleRequest) -> CubicleResponse {
     SpaceCatalog.shared.refresh()
+
+    var cursorDisplayID: String?
+    if request.here == true {
+      var info = ISSSpaceInfo()
+      guard iss_get_space_info(&info) else {
+        return CubicleResponse(ok: false, message: "Could not read the display under the cursor.")
+      }
+      cursorDisplayID = stringFromCStringBuffer(info.displayID)
+    }
+
     var entries: [CubicleSpaceEntry] = []
-    for display in SpaceCatalog.shared.displays {
+    for display in SpaceCatalog.shared.displays where cursorDisplayID == nil || display.identifier == cursorDisplayID {
       for space in display.spaces {
         let isCurrent = display.currentSpaceID.map { $0 != 0 && $0 == space.spaceID } ?? false
         entries.append(
@@ -31,6 +41,11 @@ enum CommandHandler {
             display: display.name, index: Int(space.index) + 1,
             name: SpaceNameStore.shared.name(for: space.identity.key), isCurrent: isCurrent))
       }
+    }
+
+    if let query = request.query {
+      let titles = entries.map { $0.name ?? String($0.index) }
+      entries = SpaceGridLayout.ranked(titles: titles, query: query).map { entries[$0] }
     }
     return CubicleResponse(ok: true, spaces: entries)
   }

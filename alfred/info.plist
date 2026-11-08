@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>bundleid</key>
+	<string>tech.phin.cubicle.alfred</string>
+	<key>connections</key>
+	<dict>
+		<key>6F1B5A2E-3C4D-4E8A-9B7C-1A2D3E4F5A61</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>7A2C6B3F-4D5E-4F9B-8C8D-2B3E4F5A6B72</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
+	</dict>
+	<key>createdby</key>
+	<string>Sam</string>
+	<key>description</key>
+	<string>Jump to a Space by name with Cubicle</string>
+	<key>disabled</key>
+	<false/>
+	<key>name</key>
+	<string>Cubicle</string>
+	<key>objects</key>
+	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>alfredfiltersresults</key>
+				<false/>
+				<key>alfredfiltersresultsmatchmode</key>
+				<integer>0</integer>
+				<key>argumenttreatemptyqueryasnil</key>
+				<false/>
+				<key>argumenttrimmode</key>
+				<integer>0</integer>
+				<key>argumenttype</key>
+				<integer>1</integer>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>keyword</key>
+				<string>cub</string>
+				<key>queuedelaycustom</key>
+				<integer>1</integer>
+				<key>queuedelayimmediatelyinitially</key>
+				<true/>
+				<key>queuedelaymode</key>
+				<integer>0</integer>
+				<key>queuemode</key>
+				<integer>2</integer>
+				<key>runningsubtext</key>
+				<string>Asking Cubicle...</string>
+				<key>script</key>
+				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/MacOS/cubicle)"
+if [ ! -x "$CUBICLE" ]; then
+  printf '{"items":[{"title":"Cubicle is not installed","subtitle":"Run: just install","valid":false}]}'
+  exit 0
+fi
+exec "$CUBICLE" list --alfred "$1"</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>subtext</key>
+				<string>Fuzzy-search the Spaces on this display</string>
+				<key>title</key>
+				<string>Cubicle: go to Space</string>
+				<key>type</key>
+				<integer>0</integer>
+				<key>withspace</key>
+				<true/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.input.scriptfilter</string>
+			<key>uid</key>
+			<string>6F1B5A2E-3C4D-4E8A-9B7C-1A2D3E4F5A61</string>
+			<key>version</key>
+			<integer>3</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>concurrently</key>
+				<false/>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>script</key>
+				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/MacOS/cubicle)"
+exec "$CUBICLE" go "$1"</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>type</key>
+				<integer>0</integer>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.action.script</string>
+			<key>uid</key>
+			<string>7A2C6B3F-4D5E-4F9B-8C8D-2B3E4F5A6B72</string>
+			<key>version</key>
+			<integer>2</integer>
+		</dict>
+	</array>
+	<key>readme</key>
+	<string>Type "cub" and part of a Space's name to jump to it. Matching is fuzzy (ino finds innopts) and lists only the Spaces on the display your cursor is on, leaving out the one you are already on. The number of a Space also works.
+
+Needs the cubicle command: run "just install" in the Cubicle repo (links it to ~/.local/bin and installs the app).</string>
+	<key>uidata</key>
+	<dict>
+		<key>6F1B5A2E-3C4D-4E8A-9B7C-1A2D3E4F5A61</key>
+		<dict>
+			<key>xpos</key>
+			<real>50</real>
+			<key>ypos</key>
+			<real>50</real>
+		</dict>
+		<key>7A2C6B3F-4D5E-4F9B-8C8D-2B3E4F5A6B72</key>
+		<dict>
+			<key>xpos</key>
+			<real>300</real>
+			<key>ypos</key>
+			<real>50</real>
+		</dict>
+	</dict>
+	<key>variablesdontexport</key>
+	<array/>
+	<key>version</key>
+	<string>1.0</string>
+	<key>webaddress</key>
+	<string>https://github.com/sam-phinizy/Cubicle</string>
+</dict>
+</plist>

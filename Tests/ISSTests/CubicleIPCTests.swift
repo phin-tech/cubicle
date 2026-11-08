@@ -81,4 +81,18 @@ final class CubicleIPCTests: XCTestCase {
       XCTAssertEqual($0 as? CubicleIPCError, .pathTooLong)
     }
   }
+
+  func testRequestWithoutNewFieldsStillDecodes() throws {
+    let legacy = Data(#"{"command":"list"}"#.utf8)
+    let request = try JSONDecoder().decode(CubicleRequest.self, from: legacy)
+    XCTAssertEqual(request, CubicleRequest(command: "list"))
+    XCTAssertNil(request.here)
+    XCTAssertNil(request.query)
+  }
+
+  func testListFiltersRoundTrip() throws {
+    let request = CubicleRequest(command: "list", here: true, query: "ino")
+    let decoded = try JSONDecoder().decode(CubicleRequest.self, from: JSONEncoder().encode(request))
+    XCTAssertEqual(decoded, request)
+  }
 }
