@@ -102,7 +102,8 @@ enum SpaceGridLayout {
 /// A summoned overlay showing the Spaces of the display under the cursor.
 ///
 /// `iss_switch_to_index` acts on the display under the cursor, so the grid is limited to that display
-/// (see issue #43 for why other displays cannot be targeted yet).
+/// (see issue #43 for why other displays cannot be targeted yet). In send mode it shows the Spaces of the
+/// focused window's display instead, and picking one moves the window there.
 @MainActor
 final class SpaceGridWindow {
   static let shared = SpaceGridWindow()
@@ -116,6 +117,17 @@ final class SpaceGridWindow {
     if isVisible { close() } else { show() }
   }
 
+  /// Opens the grid in send mode for the focused window, or closes the grid.
+  func toggleSend() {
+    if isVisible { return close() }
+    guard AXIsProcessTrusted() else { return Self.report("Accessibility is not granted to Cubicle.") }
+    guard let window = WindowMover.focusedWindow() else { return Self.report("Could not find the focused window.") }
+    guard let (cells, info) = WindowSender.spaces(for: window) else {
+      return Self.report("Could not read the Spaces on the window's display.")
+    }
+    present(cells: cells, info: info, sending: window)
+  }
+
   func close() {
     panel?.orderOut(nil)
     panel = nil
@@ -126,13 +138,29 @@ final class SpaceGridWindow {
       NSSound.beep()
       return
     }
+    present(cells: cells, info: info, sending: nil)
+  }
 
+  /// `sending` is the window send mode moves; without it, the grid switches Spaces, and ⇧Return sends the
+  /// focused window instead.
+  private func present(cells: [SpaceGridCell], info: ISSSpaceInfo, sending: WindowMover.Target?) {
     let screen = Self.screen(for: info.screenID) ?? NSScreen.main
     guard let screen else { return }
 
     close()
-    let view = SpaceGridView(cells: cells, currentIndex: Int(info.currentIndex))
-    view.onActivate = { [weak self] index in self?.activate(index) }
+    let view = SpaceGridView(
+      cells: cells, currentIndex: Int(info.currentIndex), sendingName: sending?.displayName)
+    view.onActivate = { [weak self] index, send in
+      guard let self else { return }
+      self.close()
+      if send {
+        self.send(sending, toIndex: index, info: info)
+      } else {
+        DispatchQueue.main.async {
+          if !iss_switch_to_index(UInt32(index)) { NSSound.beep() }
+        }
+      }
+    }
     view.onCancel = { [weak self] in self?.close() }
 
     let size = view.preferredSize(maximum: screen.visibleFrame.insetBy(dx: 40, dy: 40).size)
@@ -148,6 +176,24 @@ final class SpaceGridWindow {
     panel.makeFirstResponder(view.cellsView)
   }
 
+  /// The grid's panel doesn't activate Cubicle, so the focused window is still the one you were using.
+  private func send(_ window: WindowMover.Target?, toIndex index: Int, info: ISSSpaceInfo) {
+    guard AXIsProcessTrusted() else { return Self.report("Accessibility is not granted to Cubicle.", screenID: info.screenID) }
+    guard let window = window ?? WindowMover.focusedWindow() else {
+      return Self.report("Could not find the focused window.", screenID: info.screenID)
+    }
+    // The index means a Space on the grid's display.
+    if info.screenID != 0, !CGDisplayBounds(info.screenID).contains(window.anchor) {
+      return Self.report("\(window.appName) is on another display.", screenID: info.screenID)
+    }
+    WindowSender.sendShowingProgress(window, toIndex: index, screenID: info.screenID)
+  }
+
+  private static func report(_ message: String, screenID: UInt32 = 0) {
+    NSSound.beep()
+    OSDWindow.shared.show(message: message, screenID: screenID, force: true, duration: 2.5)
+  }
+
   /// The cells for the display under the cursor, with that display's info, or nil if unavailable.
   static func currentCells() -> (cells: [SpaceGridCell], info: ISSSpaceInfo)? {
     var info = ISSSpaceInfo()
@@ -161,13 +207,6 @@ final class SpaceGridWindow {
       return SpaceGridCell(index: index, title: name ?? String(index + 1), hasCustomName: name != nil)
     }
     return (cells, info)
-  }
-
-  private func activate(_ index: Int) {
-    close()
-    DispatchQueue.main.async {
-      if !iss_switch_to_index(UInt32(index)) { NSSound.beep() }
-    }
   }
 
   private static func screen(for id: UInt32) -> NSScreen? {
@@ -209,7 +248,7 @@ private final class SpaceGridPanel: NSPanel {
 
 final class SpaceGridView: NSVisualEffectView {
   fileprivate let cellsView: SpaceGridCellsView
-  var onActivate: ((Int) -> Void)? {
+  var onActivate: ((Int, Bool) -> Void)? {
     get { cellsView.onActivate }
     set { cellsView.onActivate = newValue }
   }
@@ -218,8 +257,8 @@ final class SpaceGridView: NSVisualEffectView {
     set { cellsView.onCancel = newValue }
   }
 
-  init(cells: [SpaceGridCell], currentIndex: Int) {
-    cellsView = SpaceGridCellsView(cells: cells, currentIndex: currentIndex)
+  init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil) {
+    cellsView = SpaceGridCellsView(cells: cells, currentIndex: currentIndex, sendingName: sendingName)
     super.init(frame: .zero)
     material = .hudWindow
     state = .active
@@ -242,11 +281,15 @@ final class SpaceGridView: NSVisualEffectView {
 }
 
 final class SpaceGridCellsView: NSView {
-  var onActivate: ((Int) -> Void)?
+  /// The chosen Space, and whether to send the window there rather than switch.
+  var onActivate: ((Int, Bool) -> Void)?
   var onCancel: (() -> Void)?
 
   private let cells: [SpaceGridCell]
   private let currentIndex: Int
+  /// Set in send mode: the window being sent. Its own Space can't be picked.
+  private let sendingName: String?
+  private var sendMode: Bool { sendingName != nil }
   private var selected: Int
   private var query = ""
   private var matchIndices: [Int]
@@ -255,12 +298,17 @@ final class SpaceGridCellsView: NSView {
   private let gap: CGFloat = 12
   private let cellSize = NSSize(width: 150, height: 90)
 
-  init(cells: [SpaceGridCell], currentIndex: Int) {
+  init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil) {
     self.cells = cells
     self.currentIndex = currentIndex
+    self.sendingName = sendingName
     self.selected = cells.indices.contains(currentIndex) ? currentIndex : 0
     self.matchIndices = cells.map(\.index)
     super.init(frame: .zero)
+    if sendMode {
+      matchIndices.removeAll { $0 == currentIndex }
+      if cells.count > 1 { selected = (currentIndex + 1) % cells.count }
+    }
     addTrackingArea(
       NSTrackingArea(
         rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
@@ -334,18 +382,29 @@ final class SpaceGridCellsView: NSView {
   }
 
   private func drawHeader() {
-    let text = query.isEmpty ? "Type to search  ·  1–9 to jump" : "Search: \(query)"
+    let text: String
+    if !query.isEmpty {
+      text = "Search: \(query)"
+    } else if let sendingName {
+      text = "Send “\(sendingName)” to…"
+    } else {
+      text = "Type to search  ·  1–9 to jump  ·  ⇧↩ sends the window"
+    }
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.lineBreakMode = .byTruncatingTail
     let attributes: [NSAttributedString.Key: Any] = [
       .font: NSFont.systemFont(ofSize: 14, weight: .regular),
-      .foregroundColor: NSColor.white.withAlphaComponent(query.isEmpty ? 0.45 : 0.95),
+      .foregroundColor: NSColor.white.withAlphaComponent(query.isEmpty && !sendMode ? 0.45 : 0.95),
+      .paragraphStyle: paragraph,
     ]
     NSAttributedString(string: text, attributes: attributes)
-      .draw(at: NSPoint(x: padding, y: padding - 6))
+      .draw(in: NSRect(x: padding, y: padding - 6, width: bounds.width - 2 * padding, height: headerHeight))
   }
 
   private func setQuery(_ newQuery: String) {
     query = newQuery
     matchIndices = SpaceGridLayout.matches(in: cells, query: query, excluding: currentIndex)
+    if sendMode { matchIndices.removeAll { $0 == currentIndex } }
     if let best = SpaceGridLayout.bestMatch(in: cells, query: query, among: matchIndices) {
       selected = best
     }
@@ -367,8 +426,9 @@ final class SpaceGridCellsView: NSView {
     }
   }
 
-  private func activateSelected() {
-    if matchIndices.contains(selected) { onActivate?(selected) } else { NSSound.beep() }
+  /// In send mode everything sends; elsewhere ⇧ does.
+  private func activate(_ index: Int, shift: Bool = false) {
+    if matchIndices.contains(index) { onActivate?(index, sendMode || shift) } else { NSSound.beep() }
   }
 
   override func keyDown(with event: NSEvent) {
@@ -382,9 +442,9 @@ final class SpaceGridCellsView: NSView {
     case 124: navigate(.right)
     case 125: navigate(.down)
     case 126: navigate(.up)
-    case 36, 76: activateSelected()
+    case 36, 76: activate(selected, shift: event.modifierFlags.contains(.shift))
     case 49:
-      if searching { setQuery(query + " ") } else { activateSelected() }
+      if searching { setQuery(query + " ") } else { activate(selected) }
     case 51:
       if searching { setQuery(String(query.dropLast())) }
     case 53:
@@ -398,7 +458,7 @@ final class SpaceGridCellsView: NSView {
       }
       if !searching, let digit = characters.first, digit.isNumber {
         if let index = SpaceGridLayout.index(forDigit: digit, count: cells.count) {
-          onActivate?(index)
+          activate(index)
         } else {
           NSSound.beep()
         }
@@ -416,7 +476,7 @@ final class SpaceGridCellsView: NSView {
 
   override func mouseDown(with event: NSEvent) {
     if let index = index(at: convert(event.locationInWindow, from: nil)) {
-      if matchIndices.contains(index) { onActivate?(index) }
+      if matchIndices.contains(index) { activate(index, shift: event.modifierFlags.contains(.shift)) }
     } else {
       onCancel?()
     }

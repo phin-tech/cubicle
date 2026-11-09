@@ -70,25 +70,23 @@ enum CommandHandler {
     return CubicleResponse(ok: true, spaces: entries)
   }
 
-  /// Moves the focused window to a Space on its display (by name or number) by holding its title bar while the
-  /// system switches Spaces. You go along with it.
+  /// Moves the focused window to a Space on its display (by name or number). By default it holds the title bar
+  /// while the system switches Spaces, so you go along with it; the flags pick another route.
   private static func send(_ query: String, reply: @escaping (CubicleResponse) -> Void) {
     var trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    var viaVirtual = false
-    var viaDisplay = false
-    var quickDrag = false
+    var route = WindowSender.Route.drag
     var stay = false
     while let flag = trimmed.split(separator: " ", maxSplits: 1).first, flag.hasPrefix("--") {
       switch flag {
-      case "--via-virtual": viaVirtual = true
-      case "--via-display": viaDisplay = true
-      case "--quick-drag": quickDrag = true
+      case "--via-virtual": route = .viaVirtual
+      case "--via-display": route = .viaDisplay
+      case "--quick-drag": route = .quickDrag
       case "--stay": stay = true
       default: return reply(CubicleResponse(ok: false, message: "Unknown send option: \(flag)"))
       }
       trimmed = String(trimmed.dropFirst(flag.count)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    if stay && !viaVirtual && !viaDisplay {
+    if stay && route != .viaVirtual && route != .viaDisplay {
       return reply(CubicleResponse(ok: false, message: "--stay currently requires --via-virtual or --via-display."))
     }
     guard !trimmed.isEmpty else { return reply(CubicleResponse(ok: false, message: "Usage: cubicle send <name|number>")) }
@@ -98,94 +96,25 @@ enum CommandHandler {
     guard let window = WindowMover.focusedWindow() else {
       return reply(CubicleResponse(ok: false, message: "Could not find the focused window."))
     }
-
-    // Resolve Spaces on the window's display: put the cursor there first, since lookups and switches follow it.
-    let savedCursor = CGEvent(source: nil)?.location ?? .zero
-    CGWarpMouseCursorPosition(CGPoint(x: window.frame.midX, y: window.frame.minY + 8))
-    guard let (cells, info) = SpaceGridWindow.currentCells() else {
-      CGWarpMouseCursorPosition(savedCursor)
+    guard let (cells, _) = WindowSender.spaces(for: window) else {
       return reply(CubicleResponse(ok: false, message: "Could not read the Spaces on the window's display."))
     }
 
     let target: Int
     if let number = Int(trimmed) {
       guard (1...cells.count).contains(number) else {
-        CGWarpMouseCursorPosition(savedCursor)
         return reply(CubicleResponse(ok: false, message: "There is no Space \(number); this display has \(cells.count)."))
       }
       target = number - 1
     } else {
       let hits = SpaceGridLayout.matches(in: cells, query: trimmed)
       guard let best = SpaceGridLayout.bestMatch(in: cells, query: trimmed, among: hits) else {
-        CGWarpMouseCursorPosition(savedCursor)
         return reply(CubicleResponse(ok: false, message: "No Space matches '\(trimmed)'."))
       }
       target = best
     }
-    let title = cells[target].title
-    let displayID = stringFromCStringBuffer(info.displayID)
-    guard let spaceID = SpaceCatalog.shared.displays.first(where: { $0.identifier == displayID })?
-      .spaces.first(where: { $0.index == UInt32(target) })?.spaceID, spaceID != 0
-    else {
-      CGWarpMouseCursorPosition(savedCursor)
-      return reply(CubicleResponse(ok: false, message: "Could not resolve \(title)'s Space ID."))
-    }
-    if iss_space_for_window(window.windowID) == spaceID {
-      CGWarpMouseCursorPosition(savedCursor)
-      return reply(CubicleResponse(ok: true, message: "The window is already on \(title)."))
-    }
-
-    CGWarpMouseCursorPosition(savedCursor)
-    let before = iss_space_for_window(window.windowID)
-    let report = "window \(window.windowID); target \(title) = Space \(spaceID); window on \(before)"
-    if viaVirtual {
-      guard NSScreen.screensHaveSeparateSpaces else {
-        return reply(CubicleResponse(ok: false, message: "Requires Displays have separate Spaces."))
-      }
-      guard VirtualDisplaySession.begin() else {
-        return reply(CubicleResponse(ok: false, message: "A virtual-display move is already running."))
-      }
-      let setupStarted = ProcessInfo.processInfo.systemUptime
-      let display = iss_ensure_virtual_display()
-      guard display != 0 else {
-        VirtualDisplaySession.end(window: window, display: display)
-        return reply(CubicleResponse(ok: false, message: "Could not create the experimental virtual display."))
-      }
-      // Display registration and its initial Space arrive asynchronously.
-      WindowMover.waitUntil({
-        NSScreen.screens.contains {
-          ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display
-        }
-      }, timeout: 3) { ready in
-        guard ready else {
-          VirtualDisplaySession.end(window: window, display: display)
-          return reply(CubicleResponse(ok: false, message: "Virtual display did not become ready. Check the menu toggle."))
-        }
-        let setupMS = Int((ProcessInfo.processInfo.systemUptime - setupStarted) * 1000)
-        WindowMover.moveViaDisplay(window, toIndex: target, spaceID: spaceID, stagingDisplayID: display, returnToIndex: stay ? Int(info.currentIndex) : nil) { moved, details in
-          VirtualDisplaySession.end(window: window, display: display)
-          let lifecycle = VirtualDisplaySession.automaticShutdown
-            ? "auto-off after \(VirtualDisplaySession.idleSeconds)s idle if the window is clear of staging."
-            : "automatic shutdown off; display kept alive."
-          let details = details + "\nDisplay ready=\(setupMS)ms; " + lifecycle
-          reply(CubicleResponse(ok: moved, message: "\(moved ? "Moved" : "Could not move") to \(title).\n\(report)\nvirtual display \(display): \(details)"))
-        }
-      }
-      return
-    }
-    if viaDisplay {
-      WindowMover.moveViaDisplay(window, toIndex: target, spaceID: spaceID, returnToIndex: stay ? Int(info.currentIndex) : nil) { moved, details in
-        reply(CubicleResponse(ok: moved, message: "\(moved ? "Moved" : "Could not move") to \(title).\n\(report)\nvia display: \(details)"))
-      }
-      return
-    }
-    // The private move calls and minimize/restore don't work on macOS 27; see docs/moving-windows-between-spaces.md.
-    WindowMover.moveByDragging(window, from: Int(info.currentIndex), toIndex: target, spaceID: spaceID, quickSwitch: quickDrag) { moved in
-      let full = report + "\ndrag: " + WindowMover.lastDragReport
-      reply(
-        moved
-          ? CubicleResponse(ok: true, message: "Moved to \(title).\n\(full)")
-          : CubicleResponse(ok: false, message: "Could not move the window to \(title).\n\(full)"))
+    WindowSender.send(window, toIndex: target, route: route, stay: stay) { outcome in
+      reply(CubicleResponse(ok: outcome.ok, message: outcome.details))
     }
   }
 

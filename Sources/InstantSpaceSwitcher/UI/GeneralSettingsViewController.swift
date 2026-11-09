@@ -3,6 +3,8 @@ import ISS
 import ServiceManagement
 
 final class GeneralSettingsViewController: NSViewController {
+  private let windowClickMenuCheckbox = NSButton(
+    checkboxWithTitle: "⌃⌥⌘-right-click a window to send it to another Space", target: nil, action: nil)
   private let stagingShutdownCheckbox = NSButton(
     checkboxWithTitle: "Automatically turn off staging display when idle", target: nil, action: nil)
   private let stagingTimeoutField = NSTextField(string: "10")
@@ -121,7 +123,10 @@ final class GeneralSettingsViewController: NSViewController {
     stagingTimeoutField.toolTip = "1–3600 seconds. Each completed move restarts the countdown."
     let timeoutRow = NSStackView(views: [stagingTimeoutField, NSTextField(labelWithString: "seconds (1–3600)")])
     timeoutRow.spacing = 8
-    formView.addRow(label: NSTextField(labelWithString: "Window Moves:"), control: stagingShutdownCheckbox)
+    windowClickMenuCheckbox.target = self
+    windowClickMenuCheckbox.action = #selector(windowClickMenuChanged)
+    formView.addRow(label: NSTextField(labelWithString: "Window Moves:"), control: windowClickMenuCheckbox)
+    formView.addRow(label: nil, control: stagingShutdownCheckbox)
     formView.addRow(label: stagingTimeoutLabel, control: timeoutRow)
     let stagingHint = NSTextField(labelWithString: "Turn off automatic shutdown to keep repeated moves fast.")
     stagingHint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -174,6 +179,7 @@ final class GeneralSettingsViewController: NSViewController {
   }
 
   private func loadSettings() {
+    windowClickMenuCheckbox.state = WindowClickMenu.isEnabledSetting ? .on : .off
     stagingShutdownCheckbox.state = VirtualDisplaySession.automaticShutdown ? .on : .off
     stagingTimeoutField.integerValue = VirtualDisplaySession.idleSeconds
     stagingTimeoutField.isEnabled = VirtualDisplaySession.automaticShutdown
@@ -215,6 +221,10 @@ final class GeneralSettingsViewController: NSViewController {
     }
 
     launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
+  }
+
+  @objc private func windowClickMenuChanged(_ sender: NSButton) {
+    WindowClickMenu.isEnabledSetting = sender.state == .on
   }
 
   @objc private func stagingShutdownChanged(_ sender: NSButton) {

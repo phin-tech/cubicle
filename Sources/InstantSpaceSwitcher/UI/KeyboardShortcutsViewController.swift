@@ -135,6 +135,8 @@ final class KeyboardShortcutsViewController: NSViewController {
       .store(in: &cancellables)
     store.$showGridHotkey.receive(on: RunLoop.main).sink { [weak self] _ in self?.loadShortcuts() }
       .store(in: &cancellables)
+    store.$sendWindowHotkey.receive(on: RunLoop.main).sink { [weak self] _ in self?.loadShortcuts() }
+      .store(in: &cancellables)
     store.$enabledStates.receive(on: RunLoop.main).sink { [weak self] _ in self?.loadShortcuts() }
       .store(in: &cancellables)
   }
@@ -230,30 +232,7 @@ extension KeyboardShortcutsViewController: NSTableViewDelegate {
     guard row < shortcuts.count else { return }
 
     let identifier = shortcuts[row].identifier
-    let defaultCombination: HotkeyCombination
-    switch identifier {
-    case .left: defaultCombination = .defaultLeft
-    case .right: defaultCombination = .defaultRight
-    case .space1: defaultCombination = .defaultForSpace(1)
-    case .space2: defaultCombination = .defaultForSpace(2)
-    case .space3: defaultCombination = .defaultForSpace(3)
-    case .space4: defaultCombination = .defaultForSpace(4)
-    case .space5: defaultCombination = .defaultForSpace(5)
-    case .space6: defaultCombination = .defaultForSpace(6)
-    case .space7: defaultCombination = .defaultForSpace(7)
-    case .space8: defaultCombination = .defaultForSpace(8)
-    case .space9: defaultCombination = .defaultForSpace(9)
-    case .space10: defaultCombination = .defaultForSpace(10)
-    case .space11: defaultCombination = .defaultForSpace(11)
-    case .space12: defaultCombination = .defaultForSpace(12)
-    case .space13: defaultCombination = .defaultForSpace(13)
-    case .space14: defaultCombination = .defaultForSpace(14)
-    case .space15: defaultCombination = .defaultForSpace(15)
-    case .space16: defaultCombination = .defaultForSpace(16)
-    case .lastSpace: defaultCombination = .defaultLastSpace
-    case .showGrid: defaultCombination = .defaultShowGrid
-    }
-    store.update(defaultCombination, for: identifier)
+    store.update(identifier.defaultCombination, for: identifier)
   }
 
   @objc private func resetAllShortcuts() {

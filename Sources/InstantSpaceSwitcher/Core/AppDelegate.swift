@@ -52,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     _ = SpaceNameStore.shared
     SpaceCatalog.shared.startObserving()
+    WindowClickMenu.shared.setEnabled(WindowClickMenu.isEnabledSetting)
     startCommandServer()
     UpdateChecker.shared.start()
     OnboardingWindowController.shared.onFinish = { [weak self] in self?.menuBarController.pointToStatusItem() }
@@ -59,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { OnboardingWindowController.shared.showIfFirstRun() }
     iss_set_switch_event_callback { event in
       DispatchQueue.main.async {
+        // A window move switches Spaces on its own; its OSD says where the window went instead.
+        guard !WindowSender.sending else { return }
         OSDWindow.shared.show(
           message: SpaceNameStore.shared.message(for: event), screenID: event.display.screenID)
       }
@@ -307,6 +310,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     hotkeyStore.$showGridHotkey.receive(on: RunLoop.main).sink { [weak self] in
       self?.registerHotkey(for: .showGrid, combination: $0)
     }.store(in: &cancellables)
+    hotkeyStore.$sendWindowHotkey.receive(on: RunLoop.main).sink { [weak self] in
+      self?.registerHotkey(for: .sendWindow, combination: $0)
+    }.store(in: &cancellables)
 
     hotkeyStore.$enabledStates.receive(on: RunLoop.main).sink { [weak self] _ in
       guard let self = self else { return }
@@ -380,6 +386,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.performSpaceLastSpace()
       case .showGrid:
         SpaceGridWindow.shared.toggle()
+      case .sendWindow:
+        SpaceGridWindow.shared.toggleSend()
       }
     }
   }

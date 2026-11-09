@@ -108,6 +108,13 @@ struct HotkeyCombination: Codable, Equatable {
     keyEquivalent: " "
   )
 
+  static let defaultSendWindow = HotkeyCombination(
+    keyCode: UInt32(kVK_Space),
+    modifiers: UInt32(cmdKey | optionKey | controlKey | shiftKey),
+    displayKey: "Space",
+    keyEquivalent: " "
+  )
+
   static func defaultForSpace(_ number: Int) -> HotkeyCombination {
     let keyCode: UInt32
     let displayKey: String
@@ -339,7 +346,11 @@ enum HotkeyIdentifier: String, CaseIterable {
   case space11, space12, space13, space14, space15, space16
   case lastSpace
   case showGrid
-  
+  case sendWindow
+
+  /// Off until you turn it on: moving windows is experimental.
+  var enabledByDefault: Bool { self != .sendWindow }
+
   var displayName: String {
     switch self {
     case .left: return "Switch to space on the left"
@@ -362,6 +373,7 @@ enum HotkeyIdentifier: String, CaseIterable {
     case .space16: return "Switch to space 16"
     case .lastSpace: return "Switch to last used space"
     case .showGrid: return "Show space grid"
+    case .sendWindow: return "Send window to space…"
     }
   }
 }
@@ -389,6 +401,7 @@ final class HotkeyStore: ObservableObject {
   @Published private(set) var space16Hotkey: HotkeyCombination
   @Published private(set) var spaceLastSpaceHotkey: HotkeyCombination
   @Published private(set) var showGridHotkey: HotkeyCombination
+  @Published private(set) var sendWindowHotkey: HotkeyCombination
   @Published private(set) var enabledStates: [HotkeyIdentifier: Bool] = [:]
 
   private let defaults: UserDefaults
@@ -415,10 +428,11 @@ final class HotkeyStore: ObservableObject {
     space16Hotkey = defaults.hotkey(forKey: DefaultsKey.space16.rawValue) ?? .defaultForSpace(16)
     spaceLastSpaceHotkey = defaults.hotkey(forKey: DefaultsKey.lastSpace.rawValue) ?? .defaultLastSpace
     showGridHotkey = defaults.hotkey(forKey: DefaultsKey.showGrid.rawValue) ?? .defaultShowGrid
+    sendWindowHotkey = defaults.hotkey(forKey: DefaultsKey.sendWindow.rawValue) ?? .defaultSendWindow
 
     for identifier in HotkeyIdentifier.allCases {
       let key = "enabled.\(identifier.rawValue)"
-      enabledStates[identifier] = defaults.object(forKey: key) as? Bool ?? true
+      enabledStates[identifier] = defaults.object(forKey: key) as? Bool ?? identifier.enabledByDefault
     }
   }
 
@@ -504,6 +518,10 @@ final class HotkeyStore: ObservableObject {
       guard combination != showGridHotkey else { return }
       showGridHotkey = combination
       defaults.setHotkey(combination, forKey: DefaultsKey.showGrid.rawValue)
+    case .sendWindow:
+      guard combination != sendWindowHotkey else { return }
+      sendWindowHotkey = combination
+      defaults.setHotkey(combination, forKey: DefaultsKey.sendWindow.rawValue)
     }
   }
 
@@ -528,6 +546,7 @@ final class HotkeyStore: ObservableObject {
     space16Hotkey = .defaultForSpace(16)
     spaceLastSpaceHotkey = .defaultLastSpace
     showGridHotkey = .defaultShowGrid
+    sendWindowHotkey = .defaultSendWindow
 
     defaults.setHotkey(leftHotkey, forKey: DefaultsKey.left.rawValue)
     defaults.setHotkey(rightHotkey, forKey: DefaultsKey.right.rawValue)
@@ -549,6 +568,7 @@ final class HotkeyStore: ObservableObject {
     defaults.setHotkey(space16Hotkey, forKey: DefaultsKey.space16.rawValue)
     defaults.setHotkey(spaceLastSpaceHotkey, forKey: DefaultsKey.lastSpace.rawValue)
     defaults.setHotkey(showGridHotkey, forKey: DefaultsKey.showGrid.rawValue)
+    defaults.setHotkey(sendWindowHotkey, forKey: DefaultsKey.sendWindow.rawValue)
   }
 
   func combination(for identifier: HotkeyIdentifier) -> HotkeyCombination {
@@ -573,11 +593,12 @@ final class HotkeyStore: ObservableObject {
     case .space16: return space16Hotkey
     case .lastSpace: return spaceLastSpaceHotkey
     case .showGrid: return showGridHotkey
+    case .sendWindow: return sendWindowHotkey
     }
   }
 
   func isEnabled(_ identifier: HotkeyIdentifier) -> Bool {
-    return enabledStates[identifier] ?? true
+    return enabledStates[identifier] ?? identifier.enabledByDefault
   }
 
   func setEnabled(_ enabled: Bool, for identifier: HotkeyIdentifier) {
@@ -607,6 +628,7 @@ final class HotkeyStore: ObservableObject {
     case space16 = "hotkey.space16"
     case lastSpace = "hotkey.lastSpace"
     case showGrid = "hotkey.showGrid"
+    case sendWindow = "hotkey.sendWindow"
   }
 }
 
@@ -652,6 +674,7 @@ extension HotkeyIdentifier {
     case .right: return .defaultRight
     case .lastSpace: return .defaultLastSpace
     case .showGrid: return .defaultShowGrid
+    case .sendWindow: return .defaultSendWindow
     default: return .defaultForSpace(Int(rawValue.dropFirst("space".count)) ?? 1)
     }
   }

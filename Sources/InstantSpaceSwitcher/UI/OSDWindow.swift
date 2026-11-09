@@ -10,11 +10,13 @@ final class OSDWindow {
 
   private init() {}
 
-  func show(message: String, screenID: UInt32) {
-    guard UserDefaults.standard.bool(forKey: "showOSD") else { return }
+  /// `force` shows it even when the switch OSD is turned off, for feedback on something you asked for (moving a
+  /// window). `duration` overrides the OSD duration setting, in seconds.
+  func show(message: String, screenID: UInt32, force: Bool = false, duration: TimeInterval? = nil) {
+    guard force || UserDefaults.standard.bool(forKey: "showOSD") else { return }
     // Mission Control OSD suppression requires overlay detection enabled
     let overlayDetectionEnabled = UserDefaults.standard.bool(forKey: "overlayDetectionEnabled")
-    if overlayDetectionEnabled && iss_is_mission_control_active() && !UserDefaults.standard.bool(forKey: "showOSDInMissionControl") {
+    if !force && overlayDetectionEnabled && iss_is_mission_control_active() && !UserDefaults.standard.bool(forKey: "showOSDInMissionControl") {
       return
     }
 
@@ -41,7 +43,7 @@ final class OSDWindow {
     window.orderFrontRegardless()
 
     let durationMs = UserDefaults.standard.object(forKey: "osdDurationMs") as? Int ?? 500
-    let duration = Double(durationMs) / 1000.0
+    let duration = duration ?? Double(durationMs) / 1000.0
     hideTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
       MainActor.assumeIsolated { self?.hide() }
     }

@@ -28,6 +28,16 @@ final class ShortcutChoiceTests: XCTestCase {
     XCTAssertEqual(HotkeyIdentifier.right.defaultCombination, .defaultRight)
     XCTAssertEqual(HotkeyIdentifier.showGrid.defaultCombination, .defaultShowGrid)
     XCTAssertEqual(HotkeyIdentifier.lastSpace.defaultCombination, .defaultLastSpace)
+    XCTAssertEqual(HotkeyIdentifier.sendWindow.defaultCombination, .defaultSendWindow)
+  }
+
+  func testSendWindowIsOffUntilTurnedOn() {
+    let defaults = UserDefaults(suiteName: "ShortcutChoiceTests.\(UUID().uuidString)")!
+    let store = HotkeyStore(defaults: defaults)
+    XCTAssertFalse(store.isEnabled(.sendWindow))
+    XCTAssertTrue(store.isEnabled(.showGrid))
+    store.setEnabled(true, for: .sendWindow)
+    XCTAssertTrue(HotkeyStore(defaults: defaults).isEnabled(.sendWindow))
   }
 
   func testConflictFindsTheActionAlreadyUsingAShortcut() {

@@ -257,48 +257,7 @@ final class HotkeyPreferencesView: NSView {
   }
 
   private func reset(_ identifier: HotkeyIdentifier) {
-    switch identifier {
-    case .left:
-      store.update(.defaultLeft, for: .left)
-    case .right:
-      store.update(.defaultRight, for: .right)
-    case .space1:
-      store.update(.defaultForSpace(1), for: .space1)
-    case .space2:
-      store.update(.defaultForSpace(2), for: .space2)
-    case .space3:
-      store.update(.defaultForSpace(3), for: .space3)
-    case .space4:
-      store.update(.defaultForSpace(4), for: .space4)
-    case .space5:
-      store.update(.defaultForSpace(5), for: .space5)
-    case .space6:
-      store.update(.defaultForSpace(6), for: .space6)
-    case .space7:
-      store.update(.defaultForSpace(7), for: .space7)
-    case .space8:
-      store.update(.defaultForSpace(8), for: .space8)
-    case .space9:
-      store.update(.defaultForSpace(9), for: .space9)
-    case .space10:
-      store.update(.defaultForSpace(10), for: .space10)
-    case .space11:
-      store.update(.defaultForSpace(11), for: .space11)
-    case .space12:
-      store.update(.defaultForSpace(12), for: .space12)
-    case .space13:
-      store.update(.defaultForSpace(13), for: .space13)
-    case .space14:
-      store.update(.defaultForSpace(14), for: .space14)
-    case .space15:
-      store.update(.defaultForSpace(15), for: .space15)
-    case .space16:
-      store.update(.defaultForSpace(16), for: .space16)
-    case .lastSpace:
-      store.update(.defaultLastSpace, for: .lastSpace)
-    case .showGrid:
-      store.update(.defaultShowGrid, for: .showGrid)
-    }
+    store.update(identifier.defaultCombination, for: identifier)
     setStatus("Reset \(identifier.displayName) shortcut.", color: .labelColor)
   }
 
