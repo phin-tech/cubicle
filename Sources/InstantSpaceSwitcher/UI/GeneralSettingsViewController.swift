@@ -5,6 +5,8 @@ import ServiceManagement
 final class GeneralSettingsViewController: NSViewController {
   private let windowClickMenuCheckbox = NSButton(
     checkboxWithTitle: "⌃⌥⌘-click a window to send it to another Space", target: nil, action: nil)
+  private let stagingPopup = NSPopUpButton()
+  private var screenObserver: NSObjectProtocol?
   private let stagingShutdownCheckbox = NSButton(
     checkboxWithTitle: "Automatically turn off staging display when idle", target: nil, action: nil)
   private let stagingTimeoutField = NSTextField(string: "10")
@@ -59,6 +61,12 @@ final class GeneralSettingsViewController: NSViewController {
   override func viewWillAppear() {
     super.viewWillAppear()
     refreshCLIStatus()
+    refreshStagingDisplays()
+    screenObserver = screenObserver ?? NotificationCenter.default.addObserver(
+      forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { self?.refreshStagingDisplays() }
+    }
   }
 
   private func setupUI() {
@@ -126,6 +134,16 @@ final class GeneralSettingsViewController: NSViewController {
     windowClickMenuCheckbox.target = self
     windowClickMenuCheckbox.action = #selector(windowClickMenuChanged)
     formView.addRow(label: NSTextField(labelWithString: "Window Moves:"), control: windowClickMenuCheckbox)
+    stagingPopup.target = self
+    stagingPopup.action = #selector(stagingDisplayChanged)
+    formView.addRow(label: NSTextField(labelWithString: "Stage windows on:"), control: stagingPopup)
+    let stagingDisplayHint = NSTextField(
+      wrappingLabelWithString: "A moving window waits here while its own display switches. A spare real display "
+        + "avoids creating the virtual one; windows on it fall back to the virtual display.")
+    stagingDisplayHint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    stagingDisplayHint.textColor = .secondaryLabelColor
+    stagingDisplayHint.preferredMaxLayoutWidth = 360
+    formView.addRow(label: nil, control: stagingDisplayHint)
     formView.addRow(label: nil, control: stagingShutdownCheckbox)
     formView.addRow(label: stagingTimeoutLabel, control: timeoutRow)
     let stagingHint = NSTextField(labelWithString: "Turn off automatic shutdown to keep repeated moves fast.")
@@ -182,8 +200,7 @@ final class GeneralSettingsViewController: NSViewController {
     windowClickMenuCheckbox.state = WindowClickMenu.isEnabledSetting ? .on : .off
     stagingShutdownCheckbox.state = VirtualDisplaySession.automaticShutdown ? .on : .off
     stagingTimeoutField.integerValue = VirtualDisplaySession.idleSeconds
-    stagingTimeoutField.isEnabled = VirtualDisplaySession.automaticShutdown
-    stagingTimeoutLabel.textColor = VirtualDisplaySession.automaticShutdown ? .labelColor : .disabledControlTextColor
+    refreshStagingDisplays()
 
     let showOSD = defaults.bool(forKey: "showOSD")
     showOSDCheckbox.state = showOSD ? .on : .off
@@ -227,10 +244,50 @@ final class GeneralSettingsViewController: NSViewController {
     WindowClickMenu.isEnabledSetting = sender.state == .on
   }
 
+  /// Lists the virtual display and every connected real one, keeping a picked display that is unplugged.
+  private func refreshStagingDisplays() {
+    stagingPopup.removeAllItems()
+    stagingPopup.addItem(withTitle: "Virtual display (created when needed)")
+    let displays = StagingDisplay.realDisplays()
+    if !displays.isEmpty { stagingPopup.menu?.addItem(.separator()) }
+    for display in displays {
+      stagingPopup.addItem(withTitle: display.choice.name)
+      stagingPopup.lastItem?.representedObject = display.choice.uuid
+    }
+    if let choice = StagingDisplay.choice {
+      if !displays.contains(where: { $0.choice.uuid == choice.uuid }) {
+        stagingPopup.addItem(withTitle: "\(choice.name) (not connected)")
+        stagingPopup.lastItem?.representedObject = choice.uuid
+      }
+      stagingPopup.selectItem(at: stagingPopup.indexOfItem(withRepresentedObject: choice.uuid))
+    } else {
+      stagingPopup.selectItem(at: 0)
+    }
+    updateStagingControls()
+  }
+
+  /// The idle settings belong to the virtual display, so they only apply while it is the one in use.
+  private func updateStagingControls() {
+    let virtual = StagingDisplay.connectedChoiceID == nil
+    stagingShutdownCheckbox.isEnabled = virtual
+    stagingTimeoutField.isEnabled = virtual && VirtualDisplaySession.automaticShutdown
+    stagingTimeoutLabel.textColor = stagingTimeoutField.isEnabled ? .labelColor : .disabledControlTextColor
+  }
+
+  @objc private func stagingDisplayChanged(_ sender: NSPopUpButton) {
+    if let uuid = sender.selectedItem?.representedObject as? String {
+      let name = StagingDisplay.realDisplays().first { $0.choice.uuid == uuid }?.choice.name
+        ?? StagingDisplay.choice?.name ?? "Display"
+      StagingDisplay.choice = StagingDisplay.Choice(uuid: uuid, name: name)
+    } else {
+      StagingDisplay.choice = nil
+    }
+    updateStagingControls()
+  }
+
   @objc private func stagingShutdownChanged(_ sender: NSButton) {
     VirtualDisplaySession.automaticShutdown = sender.state == .on
-    stagingTimeoutField.isEnabled = VirtualDisplaySession.automaticShutdown
-    stagingTimeoutLabel.textColor = VirtualDisplaySession.automaticShutdown ? .labelColor : .disabledControlTextColor
+    updateStagingControls()
   }
 
   @objc private func stagingTimeoutChanged(_ sender: NSTextField) {

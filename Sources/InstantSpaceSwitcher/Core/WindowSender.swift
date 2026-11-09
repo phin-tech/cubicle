@@ -9,7 +9,7 @@ enum WindowSender {
     case drag
     /// Hold the title bar while Cubicle switches instantly.
     case quickDrag
-    /// Park the window on another real display while this one switches.
+    /// Park the window on a real display while this one switches: the one picked in Settings, or else any other.
     case viaDisplay
     /// Park the window on Cubicle's virtual staging display while this one switches.
     case viaVirtual
@@ -26,10 +26,12 @@ enum WindowSender {
   /// True while a send is running. Sends don't overlap, and switch OSDs stay quiet meanwhile.
   private(set) static var sending = false
 
-  /// How the grid and the right-click menu move windows: through staging, so you stay where you are, when
-  /// displays have separate Spaces (staging needs that); otherwise by dragging.
-  static var interactiveRoute: (route: Route, stay: Bool) {
-    NSScreen.screensHaveSeparateSpaces ? (.viaVirtual, true) : (.drag, false)
+  /// How the grid, the click menu and the menu bar move `window`: through staging, so you stay where you are, on
+  /// the real display picked in Settings when it can take the window, else on the virtual one. Staging needs
+  /// displays to have separate Spaces; without that, by dragging.
+  static func interactiveRoute(for window: WindowMover.Target) -> (route: Route, stay: Bool) {
+    guard NSScreen.screensHaveSeparateSpaces else { return (.drag, false) }
+    return (StagingDisplay.realDisplay(for: window) != nil ? .viaDisplay : .viaVirtual, true)
   }
 
   /// The Spaces on the window's display.
@@ -112,7 +114,8 @@ enum WindowSender {
       }
     case .viaDisplay:
       WindowMover.moveViaDisplay(
-        window, toIndex: target, spaceID: spaceID, returnToIndex: stay ? spaces.currentIndex : nil
+        window, toIndex: target, spaceID: spaceID, stagingDisplayID: StagingDisplay.realDisplay(for: window),
+        returnToIndex: stay ? spaces.currentIndex : nil
       ) { moved, details in
         finish(moved, "via display: \(details)")
       }
@@ -129,7 +132,7 @@ enum WindowSender {
   /// Sends with the interactive route and reports on the OSD: progress if the move takes a moment, then where the
   /// window went or why it didn't.
   static func sendShowingProgress(_ window: WindowMover.Target, toIndex target: Int, screenID: UInt32) {
-    let (route, stay) = interactiveRoute
+    let (route, stay) = interactiveRoute(for: window)
     var finished = false
     // A cold start of the staging display takes most of a second; say something so it doesn't look stuck.
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
