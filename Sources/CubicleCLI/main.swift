@@ -11,6 +11,7 @@ let usage = """
     list --alfred [query]
                         Same as --here, printed as Alfred Script Filter JSON (the current Space is left out)
     go <name|number>    Switch to a Space by fuzzy name or one-based number
+    send [--quick-drag|--via-display|--via-virtual] [--stay] <name|number>  Move the focused window to a Space on its display, and go with it (experimental)
     left | right        Switch one Space left or right
     grid                Open the Space grid
     new-space           Add a Space (Mission Control opens briefly)
@@ -54,13 +55,15 @@ func launchApp() -> Bool {
 
 /// Sends a request, starting Cubicle first if needed. `failure` decides how errors are reported.
 func send(_ request: CubicleRequest, failure: (String) -> Never = fail) -> CubicleResponse {
+  // Moving a window waits for animated Space switches.
+  let timeout = ["send", "mc-dump"].contains(request.command) ? 15 : 5
   do {
-    return try CubicleIPC.send(request)
+    return try CubicleIPC.send(request, timeout: timeout)
   } catch CubicleIPCError.notRunning {
     guard launchApp() else { failure("Cubicle is not running and could not be started.") }
     for _ in 0..<25 {
       usleep(200_000)
-      if let response = try? CubicleIPC.send(request) { return response }
+      if let response = try? CubicleIPC.send(request, timeout: timeout) { return response }
     }
     failure("Timed out waiting for Cubicle to start.")
   } catch {
@@ -168,10 +171,21 @@ case "go":
   guard response.ok else { fail(response.message ?? "go failed") }
   if let message = response.message { print(message) }
 
+case "send":
+  let query = rest.joined(separator: " ")
+  guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { fail("Usage: cubicle send <name|number>") }
+  let response = send(CubicleRequest(command: "send", argument: query))
+  guard response.ok else { fail(response.message ?? "send failed") }
+  if let message = response.message { print(message) }
+
 case "new-space":
   let response = send(CubicleRequest(command: "new-space"))
   guard response.ok else { fail(response.message ?? "new-space failed") }
   if let message = response.message { print(message) }
+
+case "mc-dump":
+  let response = send(CubicleRequest(command: "mc-dump", argument: rest.first))
+  print(response.message ?? "")
 
 case "left", "right", "grid":
   let response = send(CubicleRequest(command: command))

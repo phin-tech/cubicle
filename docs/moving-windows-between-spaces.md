@@ -11,13 +11,13 @@ The prototype creates the display on demand and removes it after 10 seconds idle
 are clear of it. Subsequent moves reuse it and restart the timer. Idle cleanup and recreation were
 verified with successive display IDs 19 and 20. Readiness checks replace fixed delays.
 
-## Agreed settings plan (not yet implemented)
+## Implemented settings
 
 Users may move several windows in succession. Provide these persisted settings:
 
 - **Automatically turn off staging display when idle:** toggle, enabled by default.
 - **Turn off after:** adjustable duration in seconds, default **10 seconds**. Disable the duration
-  control when automatic shutdown is off. Exact allowed range remains an implementation choice.
+  control when automatic shutdown is off. The accepted range is 1–3600 seconds.
 - When automatic shutdown is off, create the display on first use and retain it until manual removal
   or app exit. Do not create it eagerly at launch.
 - Reset the idle countdown after each completed move. Cancel it while a move is running. Never remove
@@ -47,7 +47,7 @@ fluctuations and do not capture all GPU allocations; they are not precise displa
 
 ## Remaining work
 
-Implement the agreed settings; measure repeated cold/warm moves and matched memory samples; test
+Measure repeated cold/warm moves and matched memory samples; test
 other apps' minimum window sizes, display layouts, closed windows, and recovery paths. Current idle
 cleanup checks tracked windows only: unrelated windows placed on staging are not protected by that
 check. Connection prompts and display-layout effects need broader testing.
@@ -200,3 +200,6 @@ are rejected, and the menu cannot remove the display during one. Removal checks 
 current frames: if any intersects staging or cannot be read, the display stays attached for recovery.
 The menu toggle remains a manual override when no move is running. CLI now reports display-readiness
 latency separately from move timing. Cold-start prompts and idle removal need runtime verification.
+
+Settings → General → Window Moves now provides the persisted automatic-shutdown toggle and timeout.
+The default remains enabled with a 10-second idle interval. CLI lifecycle diagnostics reflect these preferences.

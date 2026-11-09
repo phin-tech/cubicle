@@ -3,6 +3,11 @@ import ISS
 import ServiceManagement
 
 final class GeneralSettingsViewController: NSViewController {
+  private let stagingShutdownCheckbox = NSButton(
+    checkboxWithTitle: "Automatically turn off staging display when idle", target: nil, action: nil)
+  private let stagingTimeoutField = NSTextField(string: "10")
+  private let stagingTimeoutLabel = NSTextField(labelWithString: "Turn off after:")
+
   private let showOSDCheckbox = NSButton(
     checkboxWithTitle: "Show on-screen display when switching spaces", target: nil, action: nil)
   private let osdDurationPopup = NSPopUpButton()
@@ -103,6 +108,27 @@ final class GeneralSettingsViewController: NSViewController {
     formView.addRow(label: nil, control: overlayDetectionCheckbox)
     formView.addSectionSpacing()
 
+    stagingShutdownCheckbox.target = self
+    stagingShutdownCheckbox.action = #selector(stagingShutdownChanged)
+    stagingTimeoutField.target = self
+    stagingTimeoutField.action = #selector(stagingTimeoutChanged)
+    let formatter = NumberFormatter()
+    formatter.minimum = 1
+    formatter.maximum = 3600
+    formatter.allowsFloats = false
+    stagingTimeoutField.formatter = formatter
+    stagingTimeoutField.widthAnchor.constraint(equalToConstant: 70).isActive = true
+    stagingTimeoutField.toolTip = "1–3600 seconds. Each completed move restarts the countdown."
+    let timeoutRow = NSStackView(views: [stagingTimeoutField, NSTextField(labelWithString: "seconds (1–3600)")])
+    timeoutRow.spacing = 8
+    formView.addRow(label: NSTextField(labelWithString: "Window Moves:"), control: stagingShutdownCheckbox)
+    formView.addRow(label: stagingTimeoutLabel, control: timeoutRow)
+    let stagingHint = NSTextField(labelWithString: "Turn off automatic shutdown to keep repeated moves fast.")
+    stagingHint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    stagingHint.textColor = .secondaryLabelColor
+    formView.addRow(label: nil, control: stagingHint)
+    formView.addSectionSpacing()
+
     // Updates (Sparkle; not in the SwiftPM development build)
     if UpdateChecker.isAvailable {
       autoUpdateCheckbox.target = self
@@ -148,6 +174,11 @@ final class GeneralSettingsViewController: NSViewController {
   }
 
   private func loadSettings() {
+    stagingShutdownCheckbox.state = VirtualDisplaySession.automaticShutdown ? .on : .off
+    stagingTimeoutField.integerValue = VirtualDisplaySession.idleSeconds
+    stagingTimeoutField.isEnabled = VirtualDisplaySession.automaticShutdown
+    stagingTimeoutLabel.textColor = VirtualDisplaySession.automaticShutdown ? .labelColor : .disabledControlTextColor
+
     let showOSD = defaults.bool(forKey: "showOSD")
     showOSDCheckbox.state = showOSD ? .on : .off
 
@@ -184,6 +215,17 @@ final class GeneralSettingsViewController: NSViewController {
     }
 
     launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
+  }
+
+  @objc private func stagingShutdownChanged(_ sender: NSButton) {
+    VirtualDisplaySession.automaticShutdown = sender.state == .on
+    stagingTimeoutField.isEnabled = VirtualDisplaySession.automaticShutdown
+    stagingTimeoutLabel.textColor = VirtualDisplaySession.automaticShutdown ? .labelColor : .disabledControlTextColor
+  }
+
+  @objc private func stagingTimeoutChanged(_ sender: NSTextField) {
+    VirtualDisplaySession.idleSeconds = sender.integerValue
+    sender.integerValue = VirtualDisplaySession.idleSeconds
   }
 
   @objc private func showOSDChanged(_ sender: NSButton) {

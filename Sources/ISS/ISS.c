@@ -58,6 +58,9 @@ extern CFArrayRef CGSCopyManagedDisplaySpaces(CGSConnectionID connection, CFStri
 extern CFStringRef CGSCopyActiveMenuBarDisplayIdentifier(CGSConnectionID connection) __attribute__((weak_import));
 extern CGSConnectionID CGSMainConnectionID(void) __attribute__((weak_import));
 extern CGSSpaceID CGSGetActiveSpace(CGSConnectionID connection) __attribute__((weak_import));
+extern CFArrayRef CGSCopySpacesForWindows(CGSConnectionID connection, int mask, CFArrayRef windows) __attribute__((weak_import));
+extern void CGSMoveWindowsToManagedSpace(CGSConnectionID connection, CFArrayRef windows, CGSSpaceID space) __attribute__((weak_import));
+extern AXError _AXUIElementGetWindow(AXUIElementRef element, CGWindowID *outWindow) __attribute__((weak_import));
 
 static CFMachPortRef globalTap = NULL;
 static CFRunLoopSourceRef globalSource = NULL;
@@ -945,4 +948,73 @@ void iss_set_switch_callback(ISSSwitchCallback callback) {
 
 void iss_set_switch_event_callback(ISSSwitchEventCallback callback) {
     switchEventCallback = callback;
+}
+
+// MARK: - Windows
+
+bool iss_window_id_for_ax_element(const void *elementPtr, uint32_t *outWindowID) {
+    AXUIElementRef element = (AXUIElementRef)elementPtr;
+    if (!element || !outWindowID || !_AXUIElementGetWindow) return false;
+    CGWindowID wid = 0;
+    if (_AXUIElementGetWindow(element, &wid) != kAXErrorSuccess || wid == 0) return false;
+    *outWindowID = wid;
+    return true;
+}
+
+static CFArrayRef iss_copy_window_number_array(uint32_t windowID) {
+    int64_t value = windowID;
+    CFNumberRef number = CFNumberCreate(NULL, kCFNumberSInt64Type, &value);
+    if (!number) return NULL;
+    CFArrayRef array = CFArrayCreate(NULL, (const void **)&number, 1, &kCFTypeArrayCallBacks);
+    CFRelease(number);
+    return array;
+}
+
+uint64_t iss_space_for_window(uint32_t windowID) {
+    if (!CGSCopySpacesForWindows || !CGSMainConnectionID) return 0;
+    CFArrayRef windows = iss_copy_window_number_array(windowID);
+    if (!windows) return 0;
+    // 7 = current, other and user spaces
+    CFArrayRef spaces = CGSCopySpacesForWindows(CGSMainConnectionID(), 7, windows);
+    CFRelease(windows);
+    uint64_t result = 0;
+    if (spaces) {
+        if (CFArrayGetCount(spaces) > 0) {
+            CFNumberRef first = (CFNumberRef)CFArrayGetValueAtIndex(spaces, 0);
+            if (first) CFNumberGetValue(first, kCFNumberSInt64Type, &result);
+        }
+        CFRelease(spaces);
+    }
+    return result;
+}
+
+bool iss_move_window_to_space_direct(uint32_t windowID, uint64_t spaceID) {
+    if (!CGSMoveWindowsToManagedSpace || !CGSMainConnectionID) return false;
+    CFArrayRef windows = iss_copy_window_number_array(windowID);
+    if (!windows) return false;
+    CGSMoveWindowsToManagedSpace(CGSMainConnectionID(), windows, (CGSSpaceID)spaceID);
+    CFRelease(windows);
+    return true;
+}
+
+// SkyLight calls behind yabai's no-SIP workaround: tag the Space with a temporary compat ID, move the window to that
+// "workspace", then clear the tag. Looked up at runtime so a missing symbol just disables this path.
+typedef CGError (*SLSSpaceSetCompatIDFn)(int connection, uint64_t space, int workspace);
+typedef CGError (*SLSSetWindowListWorkspaceFn)(int connection, uint32_t *windows, int count, int workspace);
+
+bool iss_move_window_to_space_compat(uint32_t windowID, uint64_t spaceID) {
+    static void *skylight = NULL;
+    if (!skylight) skylight = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY);
+    if (!skylight || !CGSMainConnectionID) return false;
+    SLSSpaceSetCompatIDFn setCompat = (SLSSpaceSetCompatIDFn)dlsym(skylight, "SLSSpaceSetCompatID");
+    SLSSetWindowListWorkspaceFn setWorkspace = (SLSSetWindowListWorkspaceFn)dlsym(skylight, "SLSSetWindowListWorkspace");
+    if (!setCompat || !setWorkspace) return false;
+
+    const int tag = 0x63756269; // 'cubi'
+    int cid = CGSMainConnectionID();
+    uint32_t wid = windowID;
+    setCompat(cid, spaceID, tag);
+    setWorkspace(cid, &wid, 1, tag);
+    setCompat(cid, spaceID, 0);
+    return true;
 }

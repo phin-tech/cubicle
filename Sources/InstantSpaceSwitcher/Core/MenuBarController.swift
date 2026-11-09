@@ -5,6 +5,7 @@ import ISS
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
   private(set) var statusItem: NSStatusItem!
+  private var virtualDisplayItem: NSMenuItem?
   private var leftMenuItem: NSMenuItem?
   private var rightMenuItem: NSMenuItem?
   private var spacesMenuItem: NSMenuItem?
@@ -84,6 +85,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     menu.addItem(NSMenuItem.separator())
 
+    let virtualItem = NSMenuItem(title: "Experimental Virtual Display", action: #selector(toggleVirtualDisplay(_:)), keyEquivalent: "")
+    virtualItem.target = self
+    virtualItem.image = NSImage(systemSymbolName: "display", accessibilityDescription: nil)
+    menu.addItem(virtualItem)
+    virtualDisplayItem = virtualItem
+
     let preferencesItem = NSMenuItem(
       title: "Settings…", action: #selector(openPreferences(_:)), keyEquivalent: ",")
     preferencesItem.keyEquivalentModifierMask = [.command]
@@ -119,6 +126,36 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     menu.addItem(quitItem)
 
     return menu
+  }
+
+  private func updateVirtualDisplayItem() {
+    let display = iss_virtual_display_id()
+    virtualDisplayItem?.state = display == 0 ? .off : .on
+    if display == 0 {
+      virtualDisplayItem?.title = "Experimental Virtual Display — Off"
+    } else {
+      let visible = NSScreen.screens.contains {
+        ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display
+      }
+      virtualDisplayItem?.title = "Experimental Virtual Display — \(visible ? "Ready" : "Unavailable")"
+    }
+  }
+
+  @objc private func toggleVirtualDisplay(_ sender: Any?) {
+    guard !VirtualDisplaySession.moving else { return }
+    VirtualDisplaySession.cancelCleanup()
+    if iss_virtual_display_id() != 0 {
+      iss_remove_virtual_display()
+    } else if iss_ensure_virtual_display() == 0 {
+      let alert = NSAlert()
+      alert.messageText = "Could not create the virtual display"
+      alert.informativeText = "The experimental display API failed."
+      alert.runModal()
+    }
+    updateVirtualDisplayItem()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+      self?.updateVirtualDisplayItem()
+    }
   }
 
   @objc private func switchLeft(_ sender: Any?) {
@@ -245,6 +282,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   }
 
   func menuNeedsUpdate(_ menu: NSMenu) {
+    updateVirtualDisplayItem()
     if menu === statusItem.menu || menu === spacesMenuItem?.submenu {
       SpaceCatalog.shared.refresh()
       delegate?.menuBarControllerDidRequestRefresh(self)

@@ -89,7 +89,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Serves the `cubicle` CLI. Requests run here so they use this app's Accessibility permission.
   private func startCommandServer() {
     let server = CubicleIPCServer { request in
-      DispatchQueue.main.sync { MainActor.assumeIsolated { CommandHandler.handle(request) } }
+      // Commands that finish later (moving a window waits for the Space switch) reply through a callback;
+      // this queue waits for it while the main thread stays free.
+      let done = DispatchSemaphore(value: 0)
+      nonisolated(unsafe) var response = CubicleResponse(ok: false, message: "Timed out.")
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          CommandHandler.handle(request) { result in
+            response = result
+            done.signal()
+          }
+        }
+      }
+      _ = done.wait(timeout: .now() + 14)
+      return response
     }
     do {
       try server.start()
