@@ -1,7 +1,7 @@
 import AppKit
 
 /// Sends a window to another Space on its display. The CLI (`cubicle send`), the grid's send mode and the
-/// right-click menu all go through here.
+/// modifier-click menu all go through here.
 @MainActor
 enum WindowSender {
   enum Route {

@@ -306,7 +306,7 @@ struct HotkeyCombination: Codable, Equatable {
     }
   }
 
-  private static func symbols(for modifiers: UInt32, optionKeyKind: OptionKeyKind) -> String {
+  static func symbols(for modifiers: UInt32, optionKeyKind: OptionKeyKind = .any) -> String {
     var result = ""
     if modifiers & UInt32(controlKey) != 0 { result += "⌃" }
     if modifiers & UInt32(optionKey) != 0 {
@@ -319,6 +319,61 @@ struct HotkeyCombination: Codable, Equatable {
 
   private static var defaultModifierMask: UInt32 {
     UInt32(cmdKey) | UInt32(optionKey) | UInt32(controlKey)
+  }
+}
+
+/// Modifier keys plus a mouse button: what opens the send-window menu over a window.
+struct ClickBinding: Codable, Equatable {
+  enum Button: String, Codable {
+    case left, right
+    /// Either button; the default, so trackpads without secondary click work.
+    case any
+  }
+
+  var modifiers: UInt32  // Carbon mask, as HotkeyCombination uses
+  var button: Button
+
+  static let `default` = ClickBinding(
+    modifiers: UInt32(controlKey | optionKey | cmdKey), button: .any)
+
+  var displayString: String {
+    let click: String
+    switch button {
+    case .left: click = "Click"
+    case .right: click = "Right-click"
+    case .any: click = "Click"
+    }
+    return HotkeyCombination.symbols(for: modifiers) + " " + click
+  }
+
+  /// At least two modifiers, so a plain click, ⇧-click (extend a selection), ⌃-click (right-click) or ⌘-click is
+  /// never swallowed.
+  var isValid: Bool { modifiers.nonzeroBitCount >= 2 }
+
+  /// Recorded clicks name the button that was pressed.
+  init?(eventType: CGEventType, flags: CGEventFlags) {
+    switch eventType {
+    case .leftMouseDown: button = .left
+    case .rightMouseDown: button = .right
+    default: return nil
+    }
+    modifiers = HotkeyModifierState.carbonMask(fromRawFlags: flags.rawValue)
+  }
+
+  init(modifiers: UInt32, button: Button) {
+    self.modifiers = modifiers
+    self.button = button
+  }
+
+  func matches(eventType: CGEventType, flags: CGEventFlags) -> Bool {
+    let pressed: Button
+    switch eventType {
+    case .leftMouseDown: pressed = .left
+    case .rightMouseDown: pressed = .right
+    default: return false
+    }
+    return (button == .any || button == pressed)
+      && HotkeyModifierState.carbonMask(fromRawFlags: flags.rawValue) == modifiers
   }
 }
 

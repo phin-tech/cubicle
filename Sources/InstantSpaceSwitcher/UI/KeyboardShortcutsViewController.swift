@@ -15,6 +15,11 @@ final class KeyboardShortcutsViewController: NSViewController {
   private let tableView = NSTableView()
   private let scrollView = NSScrollView()
 
+  // The send-window menu's modifier-click, recorded like a shortcut but with a click.
+  private let clickEnabledCheckbox = NSButton(
+    checkboxWithTitle: "Click a window for its Send to Space menu:", target: nil, action: nil)
+  private let clickRecorder = ShortcutRecorderControl(frame: NSRect(x: 0, y: 0, width: 150, height: 22))
+
   private struct ShortcutRow {
     let identifier: HotkeyIdentifier
     let name: String
@@ -68,18 +73,76 @@ final class KeyboardShortcutsViewController: NSViewController {
       title: "Reset All to Defaults", target: self, action: #selector(resetAllShortcuts))
     resetAllButton.translatesAutoresizingMaskIntoConstraints = false
 
+    let clickRow = makeClickRow()
+
     view.addSubview(scrollView)
+    view.addSubview(clickRow)
     view.addSubview(resetAllButton)
 
     NSLayoutConstraint.activate([
       scrollView.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
       scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
       scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-      scrollView.bottomAnchor.constraint(equalTo: resetAllButton.topAnchor, constant: -12),
+      scrollView.bottomAnchor.constraint(equalTo: clickRow.topAnchor, constant: -12),
+
+      clickRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      clickRow.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
+      clickRow.bottomAnchor.constraint(equalTo: resetAllButton.topAnchor, constant: -12),
 
       resetAllButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
       resetAllButton.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -20),
     ])
+  }
+
+  private func makeClickRow() -> NSView {
+    clickEnabledCheckbox.target = self
+    clickEnabledCheckbox.action = #selector(clickEnabledChanged(_:))
+    clickRecorder.mode = .click
+    clickRecorder.translatesAutoresizingMaskIntoConstraints = false
+    clickRecorder.onClickRecorded = { [weak self] binding in
+      WindowClickMenu.binding = binding
+      self?.loadClickBinding()
+    }
+    let resetButton = NSButton(
+      image: NSImage(systemSymbolName: "arrow.counterclockwise", accessibilityDescription: "Reset")!,
+      target: self, action: #selector(resetClickBinding))
+    resetButton.isBordered = false
+
+    let controls = NSStackView(views: [clickEnabledCheckbox, clickRecorder, resetButton])
+    controls.spacing = 8
+    let hint = NSTextField(
+      labelWithString: "Hold at least two modifier keys and click. While on, the same modifier-click and -drag "
+        + "don't reach other apps.")
+    hint.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    hint.textColor = .secondaryLabelColor
+    let row = NSStackView(views: [controls, hint])
+    row.orientation = .vertical
+    row.alignment = .leading
+    row.spacing = 4
+    row.translatesAutoresizingMaskIntoConstraints = false
+    NSLayoutConstraint.activate([
+      clickRecorder.widthAnchor.constraint(equalToConstant: 150),
+      clickRecorder.heightAnchor.constraint(equalToConstant: 22),
+      resetButton.widthAnchor.constraint(equalToConstant: 24),
+    ])
+    loadClickBinding()
+    return row
+  }
+
+  private func loadClickBinding() {
+    clickEnabledCheckbox.state = WindowClickMenu.isEnabledSetting ? .on : .off
+    clickRecorder.currentClick = WindowClickMenu.binding
+    clickRecorder.isEnabled = WindowClickMenu.isEnabledSetting
+  }
+
+  @objc private func clickEnabledChanged(_ sender: NSButton) {
+    WindowClickMenu.isEnabledSetting = sender.state == .on
+    loadClickBinding()
+  }
+
+  @objc private func resetClickBinding() {
+    WindowClickMenu.binding = .default
+    loadClickBinding()
   }
 
   private func loadShortcuts() {
@@ -237,6 +300,7 @@ extension KeyboardShortcutsViewController: NSTableViewDelegate {
 
   @objc private func resetAllShortcuts() {
     store.resetToDefaults()
+    resetClickBinding()
   }
 
   @objc private func toggleEnabled(_ sender: NSButton) {

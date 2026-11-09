@@ -3,8 +3,6 @@ import ISS
 import ServiceManagement
 
 final class GeneralSettingsViewController: NSViewController {
-  private let windowClickMenuCheckbox = NSButton(
-    checkboxWithTitle: "⌃⌥⌘-click a window to send it to another Space", target: nil, action: nil)
   private let stagingPopup = NSPopUpButton()
   private var screenObserver: NSObjectProtocol?
   private let stagingShutdownCheckbox = NSButton(
@@ -131,11 +129,10 @@ final class GeneralSettingsViewController: NSViewController {
     stagingTimeoutField.toolTip = "1–3600 seconds. Each completed move restarts the countdown."
     let timeoutRow = NSStackView(views: [stagingTimeoutField, NSTextField(labelWithString: "seconds (1–3600)")])
     timeoutRow.spacing = 8
-    windowClickMenuCheckbox.target = self
-    windowClickMenuCheckbox.action = #selector(windowClickMenuChanged)
-    formView.addRow(label: NSTextField(labelWithString: "Window Moves:"), control: windowClickMenuCheckbox)
     stagingPopup.target = self
     stagingPopup.action = #selector(stagingDisplayChanged)
+    formView.addRow(label: NSTextField(labelWithString: "Window Moves:"), control: NSTextField(
+      labelWithString: "Click bindings and shortcuts for moving windows are in Keyboard."))
     formView.addRow(label: NSTextField(labelWithString: "Stage windows on:"), control: stagingPopup)
     let stagingDisplayHint = NSTextField(
       wrappingLabelWithString: "A moving window waits here while its own display switches. A spare real display "
@@ -197,7 +194,6 @@ final class GeneralSettingsViewController: NSViewController {
   }
 
   private func loadSettings() {
-    windowClickMenuCheckbox.state = WindowClickMenu.isEnabledSetting ? .on : .off
     stagingShutdownCheckbox.state = VirtualDisplaySession.automaticShutdown ? .on : .off
     stagingTimeoutField.integerValue = VirtualDisplaySession.idleSeconds
     refreshStagingDisplays()
@@ -238,10 +234,6 @@ final class GeneralSettingsViewController: NSViewController {
     }
 
     launchAtLoginCheckbox.state = SMAppService.mainApp.status == .enabled ? .on : .off
-  }
-
-  @objc private func windowClickMenuChanged(_ sender: NSButton) {
-    WindowClickMenu.isEnabledSetting = sender.state == .on
   }
 
   /// Lists the virtual display and every connected real one, keeping a picked display that is unplugged.

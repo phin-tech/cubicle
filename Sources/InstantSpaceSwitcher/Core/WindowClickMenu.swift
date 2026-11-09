@@ -1,11 +1,11 @@
 import AppKit
 
-/// ⌃⌥⌘-click (or right-click) a window to get a menu of the Spaces on its display; picking one sends the window
-/// there. The menu bar's "Move Current Window to Space" uses the same items.
+/// Modifier-click a window (⌃⌥⌘-click unless changed in Settings → Keyboard) to get a menu of the Spaces on its
+/// display; picking one sends the window there. The menu bar's "Move Current Window to Space" uses the same items.
 ///
 /// Other apps' own context menus can't be extended, so Cubicle catches the click before the app does and shows
-/// its own menu. The three modifiers match the default switching shortcuts and keep ordinary clicks alone; the
-/// catch is that ⌃⌥⌘-drag no longer reaches other apps while this is on.
+/// its own menu. The binding needs two modifiers so ordinary clicks are left alone; the catch is that the same
+/// modifier-drag no longer reaches other apps while this is on.
 @MainActor
 final class WindowClickMenu: NSObject {
   static let shared = WindowClickMenu()
@@ -19,7 +19,26 @@ final class WindowClickMenu: NSObject {
     }
   }
 
-  private static let modifiers: CGEventFlags = [.maskControl, .maskAlternate, .maskCommand]
+  private static let bindingKey = "windowClickBinding"
+  /// Read on every click anywhere, so it's decoded once and kept.
+  private static var cachedBinding: ClickBinding?
+  static var binding: ClickBinding {
+    get {
+      if let cachedBinding { return cachedBinding }
+      let saved = UserDefaults.standard.data(forKey: bindingKey)
+        .flatMap { try? JSONDecoder().decode(ClickBinding.self, from: $0) }
+      let binding = saved?.isValid == true ? saved! : .default
+      cachedBinding = binding
+      return binding
+    }
+    set {
+      cachedBinding = newValue
+      UserDefaults.standard.set(try? JSONEncoder().encode(newValue), forKey: bindingKey)
+    }
+  }
+
+  /// Set while Settings records a new binding, so recording ⌃⌥⌘-click doesn't open the menu.
+  var isPaused = false
 
   private var eventTap: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
@@ -95,8 +114,7 @@ final class WindowClickMenu: NSObject {
     case .tapDisabledByTimeout, .tapDisabledByUserInput:
       if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
     case .leftMouseDown, .rightMouseDown:
-      let flags = event.flags.intersection([.maskControl, .maskAlternate, .maskCommand, .maskShift])
-      guard flags == Self.modifiers else { break }
+      guard !isPaused, Self.binding.matches(eventType: type, flags: event.flags) else { break }
       swallowedButtons.insert(type == .leftMouseDown ? .leftMouseUp : .rightMouseUp)
       let point = event.location
       // Return from the tap first: finding the window asks its app, and the menu runs its own loop.

@@ -2,6 +2,9 @@ import AppKit
 import Carbon
 
 final class ShortcutRecorderControl: NSView {
+  /// `.key` records a keyboard shortcut. `.click` records modifiers held while clicking, for the send-window menu.
+  enum Mode { case key, click }
+
   private static weak var activeRecorder: ShortcutRecorderControl?
 
   static func cancelActiveRecording() {
@@ -21,10 +24,12 @@ final class ShortcutRecorderControl: NSView {
       if isRecording {
         keyPressed = false
         HotKeyManager.shared.unregisterAll()
+        WindowClickMenu.shared.isPaused = true
         startEventTapRecording()
         Self.activeRecorder = self
       } else {
         stopEventTapRecording()
+        WindowClickMenu.shared.isPaused = false
         if Self.activeRecorder === self {
           Self.activeRecorder = nil
         }
@@ -47,6 +52,12 @@ final class ShortcutRecorderControl: NSView {
   var onRecordingComplete: ((HotkeyCombination) -> Void)?
   var onRecordingCancelled: (() -> Void)?
 
+  var mode = Mode.key
+  var currentClick: ClickBinding? {
+    didSet { needsDisplay = true }
+  }
+  var onClickRecorded: ((ClickBinding) -> Void)?
+
   override var acceptsFirstResponder: Bool { true }
   override var canBecomeKeyView: Bool { true }
 
@@ -55,8 +66,8 @@ final class ShortcutRecorderControl: NSView {
       onKeyPress: { [weak self] event in
         self?.handleKeyEvent(event)
       },
-      onMouseClick: { [weak self] in
-        self?.isRecording = false
+      onMouseClick: { [weak self] type, flags in
+        self?.handleClick(type, flags)
       }
     )
   }
@@ -65,7 +76,31 @@ final class ShortcutRecorderControl: NSView {
     GlobalEventTapRecorder.shared.stopRecording()
   }
 
+  /// A click cancels a key recording. In click mode it records, unless no modifiers are held (cancel) or too few
+  /// (beep and keep listening).
+  private func handleClick(_ type: CGEventType, _ flags: CGEventFlags) {
+    guard mode == .click, let binding = ClickBinding(eventType: type, flags: flags), binding.modifiers != 0 else {
+      isRecording = false
+      onRecordingCancelled?()
+      return
+    }
+    guard binding.isValid else { return NSSound.beep() }
+    isRecording = false
+    onClickRecorded?(binding)
+  }
+
   private func handleKeyEvent(_ event: NSEvent) {
+    // A click recording only listens for clicks; Escape cancels it.
+    if mode == .click {
+      if event.keyCode == UInt16(kVK_Escape) {
+        isRecording = false
+        onRecordingCancelled?()
+      } else if !event.isARepeat {
+        NSSound.beep()
+      }
+      return
+    }
+
     // Ignore additional key presses after first key
     guard !keyPressed else {
       NSSound.beep()
@@ -112,7 +147,11 @@ final class ShortcutRecorderControl: NSView {
     path.stroke()
 
     // Draw text
-    let text = isRecording ? "Press keys..." : (currentShortcut?.displayString ?? "Click to record")
+    let text: String
+    switch mode {
+    case .key: text = isRecording ? "Press keys..." : (currentShortcut?.displayString ?? "Click to record")
+    case .click: text = isRecording ? "Hold keys and click…" : (currentClick?.displayString ?? "Click to record")
+    }
     let attributes: [NSAttributedString.Key: Any] = [
       .font: NSFont.systemFont(ofSize: 13),
       .foregroundColor: NSColor.labelColor,

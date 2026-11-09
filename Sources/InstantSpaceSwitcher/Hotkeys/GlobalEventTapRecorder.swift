@@ -7,11 +7,14 @@ final class GlobalEventTapRecorder {
   private var eventTap: CFMachPort?
   private var runLoopSource: CFRunLoopSource?
   private var onKeyPress: ((NSEvent) -> Void)?
-  private var onMouseClick: (() -> Void)?
+  private var onMouseClick: ((CGEventType, CGEventFlags) -> Void)?
 
   private init() {}
 
-  func startRecording(onKeyPress: @escaping (NSEvent) -> Void, onMouseClick: @escaping () -> Void) {
+  /// `onMouseClick` gets the button's event type and the modifiers held.
+  func startRecording(
+    onKeyPress: @escaping (NSEvent) -> Void, onMouseClick: @escaping (CGEventType, CGEventFlags) -> Void
+  ) {
     stopRecording()
 
     self.onKeyPress = onKeyPress
@@ -32,9 +35,9 @@ final class GlobalEventTapRecorder {
           let recorder = Unmanaged<GlobalEventTapRecorder>.fromOpaque(userInfo)
             .takeUnretainedValue()
 
-          // Handle mouse clicks - cancel recording
+          // Mouse clicks: recorded as click bindings, or they cancel a key recording
           if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
-            recorder.onMouseClick?()
+            recorder.onMouseClick?(type, event.flags)
             return nil  // Consume the click
           }
 
