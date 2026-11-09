@@ -9,8 +9,8 @@ settings:
   base:
     # The release version (`just release` tags v<this>); bump both for each release.
     # Starts at 0.0.0 so the first `just ship minor` releases 0.1.0.
-    MARKETING_VERSION: "0.2.0-beta.3"
-    CURRENT_PROJECT_VERSION: "7"
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "8"
     # Package.swift is tools-version 5.9, so the code is Swift 5 language mode.
     SWIFT_VERSION: "5.0"
 packages:
