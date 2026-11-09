@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import CubicleIPC
 import Foundation
 
 enum OptionKeyKind: String, Codable {
@@ -114,6 +115,30 @@ struct HotkeyCombination: Codable, Equatable {
     displayKey: "Space",
     keyEquivalent: " "
   )
+
+  /// Rectangle's default keys: ⌃⌥ plus arrows for halves, U I J K for quarters, Return, C and Delete.
+  static func defaultSnap(_ action: SnapAction) -> HotkeyCombination {
+    let keyCode: Int
+    let displayKey: String
+    let keyEquivalent: String
+    switch action {
+    case .leftHalf: (keyCode, displayKey, keyEquivalent) = (kVK_LeftArrow, "←", arrowKeyEquivalent(.leftArrow))
+    case .rightHalf: (keyCode, displayKey, keyEquivalent) = (kVK_RightArrow, "→", arrowKeyEquivalent(.rightArrow))
+    case .topHalf: (keyCode, displayKey, keyEquivalent) = (kVK_UpArrow, "↑", arrowKeyEquivalent(.upArrow))
+    case .bottomHalf: (keyCode, displayKey, keyEquivalent) = (kVK_DownArrow, "↓", arrowKeyEquivalent(.downArrow))
+    case .topLeft: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_U, "U", "u")
+    case .topRight: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_I, "I", "i")
+    case .bottomLeft: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_J, "J", "j")
+    case .bottomRight: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_K, "K", "k")
+    case .maximize: (keyCode, displayKey, keyEquivalent) = (kVK_Return, "↩", "\r")
+    case .center: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_C, "C", "c")
+    case .restore:
+      (keyCode, displayKey, keyEquivalent) = (kVK_Delete, "⌫", String(Character(UnicodeScalar(NSBackspaceCharacter)!)))
+    }
+    return HotkeyCombination(
+      keyCode: UInt32(keyCode), modifiers: UInt32(controlKey | optionKey), displayKey: displayKey,
+      keyEquivalent: keyEquivalent)
+  }
 
   static func defaultForSpace(_ number: Int) -> HotkeyCombination {
     let keyCode: UInt32
@@ -402,9 +427,33 @@ enum HotkeyIdentifier: String, CaseIterable {
   case lastSpace
   case showGrid
   case sendWindow
+  case snapLeftHalf, snapRightHalf, snapTopHalf, snapBottomHalf
+  case snapTopLeft, snapTopRight, snapBottomLeft, snapBottomRight
+  case snapMaximize, snapCenter, snapRestore
 
-  /// Off until you turn it on: moving windows is experimental.
-  var enabledByDefault: Bool { self != .sendWindow }
+  /// Off until you turn it on: moving windows is experimental, and the snap keys would take over ⌃⌥ keys other
+  /// apps use.
+  var enabledByDefault: Bool { self != .sendWindow && snapAction == nil }
+
+  /// The snap this shortcut runs, for the snap shortcuts.
+  var snapAction: SnapAction? {
+    switch self {
+    case .snapLeftHalf: return .leftHalf
+    case .snapRightHalf: return .rightHalf
+    case .snapTopHalf: return .topHalf
+    case .snapBottomHalf: return .bottomHalf
+    case .snapTopLeft: return .topLeft
+    case .snapTopRight: return .topRight
+    case .snapBottomLeft: return .bottomLeft
+    case .snapBottomRight: return .bottomRight
+    case .snapMaximize: return .maximize
+    case .snapCenter: return .center
+    case .snapRestore: return .restore
+    default: return nil
+    }
+  }
+
+  static var snapIdentifiers: [HotkeyIdentifier] { allCases.filter { $0.snapAction != nil } }
 
   var displayName: String {
     switch self {
@@ -429,6 +478,7 @@ enum HotkeyIdentifier: String, CaseIterable {
     case .lastSpace: return "Switch to last used space"
     case .showGrid: return "Show space grid"
     case .sendWindow: return "Send window to space…"
+    default: return "Snap window: \(snapAction!.displayName)"
     }
   }
 }
@@ -457,6 +507,8 @@ final class HotkeyStore: ObservableObject {
   @Published private(set) var spaceLastSpaceHotkey: HotkeyCombination
   @Published private(set) var showGridHotkey: HotkeyCombination
   @Published private(set) var sendWindowHotkey: HotkeyCombination
+  /// The snap shortcuts, keyed by identifier (there are too many to give each its own property).
+  @Published private(set) var snapHotkeys: [HotkeyIdentifier: HotkeyCombination] = [:]
   @Published private(set) var enabledStates: [HotkeyIdentifier: Bool] = [:]
 
   private let defaults: UserDefaults
@@ -484,6 +536,11 @@ final class HotkeyStore: ObservableObject {
     spaceLastSpaceHotkey = defaults.hotkey(forKey: DefaultsKey.lastSpace.rawValue) ?? .defaultLastSpace
     showGridHotkey = defaults.hotkey(forKey: DefaultsKey.showGrid.rawValue) ?? .defaultShowGrid
     sendWindowHotkey = defaults.hotkey(forKey: DefaultsKey.sendWindow.rawValue) ?? .defaultSendWindow
+
+    for identifier in HotkeyIdentifier.snapIdentifiers {
+      snapHotkeys[identifier] =
+        defaults.hotkey(forKey: "hotkey.\(identifier.rawValue)") ?? identifier.defaultCombination
+    }
 
     for identifier in HotkeyIdentifier.allCases {
       let key = "enabled.\(identifier.rawValue)"
@@ -577,6 +634,10 @@ final class HotkeyStore: ObservableObject {
       guard combination != sendWindowHotkey else { return }
       sendWindowHotkey = combination
       defaults.setHotkey(combination, forKey: DefaultsKey.sendWindow.rawValue)
+    default:
+      guard combination != snapHotkeys[identifier] else { return }
+      snapHotkeys[identifier] = combination
+      defaults.setHotkey(combination, forKey: "hotkey.\(identifier.rawValue)")
     }
   }
 
@@ -624,6 +685,13 @@ final class HotkeyStore: ObservableObject {
     defaults.setHotkey(spaceLastSpaceHotkey, forKey: DefaultsKey.lastSpace.rawValue)
     defaults.setHotkey(showGridHotkey, forKey: DefaultsKey.showGrid.rawValue)
     defaults.setHotkey(sendWindowHotkey, forKey: DefaultsKey.sendWindow.rawValue)
+
+    var snaps: [HotkeyIdentifier: HotkeyCombination] = [:]
+    for identifier in HotkeyIdentifier.snapIdentifiers {
+      snaps[identifier] = identifier.defaultCombination
+      defaults.setHotkey(identifier.defaultCombination, forKey: "hotkey.\(identifier.rawValue)")
+    }
+    snapHotkeys = snaps
   }
 
   func combination(for identifier: HotkeyIdentifier) -> HotkeyCombination {
@@ -649,6 +717,7 @@ final class HotkeyStore: ObservableObject {
     case .lastSpace: return spaceLastSpaceHotkey
     case .showGrid: return showGridHotkey
     case .sendWindow: return sendWindowHotkey
+    default: return snapHotkeys[identifier] ?? identifier.defaultCombination
     }
   }
 
@@ -661,6 +730,18 @@ final class HotkeyStore: ObservableObject {
     let key = "enabled.\(identifier.rawValue)"
     defaults.set(enabled, forKey: key)
   }
+
+  /// Turns every snap shortcut on or off at once (Settings and the walkthrough offer them as one switch).
+  func setSnapShortcutsEnabled(_ enabled: Bool) {
+    var states = enabledStates
+    for identifier in HotkeyIdentifier.snapIdentifiers {
+      states[identifier] = enabled
+      defaults.set(enabled, forKey: "enabled.\(identifier.rawValue)")
+    }
+    enabledStates = states
+  }
+
+  var snapShortcutsEnabled: Bool { HotkeyIdentifier.snapIdentifiers.allSatisfy(isEnabled) }
 
   private enum DefaultsKey: String {
     case left = "hotkey.left"
@@ -730,7 +811,9 @@ extension HotkeyIdentifier {
     case .lastSpace: return .defaultLastSpace
     case .showGrid: return .defaultShowGrid
     case .sendWindow: return .defaultSendWindow
-    default: return .defaultForSpace(Int(rawValue.dropFirst("space".count)) ?? 1)
+    default:
+      if let snapAction { return .defaultSnap(snapAction) }
+      return .defaultForSpace(Int(rawValue.dropFirst("space".count)) ?? 1)
     }
   }
 }

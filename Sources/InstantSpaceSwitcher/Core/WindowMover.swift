@@ -66,7 +66,7 @@ enum WindowMover {
     return target
   }
 
-  private static func target(for window: AXUIElement) -> Target? {
+  static func target(for window: AXUIElement) -> Target? {
     var pid: pid_t = 0
     guard let windowID = WindowServer.windowID(of: window),
       AXUIElementGetPid(window, &pid) == .success,

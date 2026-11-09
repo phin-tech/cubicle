@@ -1,0 +1,3 @@
+# Zones only arrange windows already on the Space
+
+A Space's layout only places windows that are already on that Space; Cubicle never pulls a bound app's windows onto it from another Space. On macOS 27 with SIP on, the private APIs for moving another app's window between Spaces silently do nothing, Accessibility cannot see windows on other Spaces, and the only method that works (a synthetic title-bar drag plus Ctrl+arrow, see `docs/moving-windows-between-spaces.md`) takes about 2 s per window, animates, and drags the user along to the target Space. Pulling windows in on every Space switch would make switching slow and visible, so if a bound app has no window on a Space, it simply isn't shown there.

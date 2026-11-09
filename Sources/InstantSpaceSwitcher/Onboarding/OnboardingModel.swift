@@ -176,6 +176,13 @@ final class OnboardingModel: ObservableObject {
     store.update(combination, for: identifier)
   }
 
+  var snapShortcutsEnabled: Bool { HotkeyStore.shared.snapShortcutsEnabled }
+
+  func setSnapShortcutsEnabled(_ enabled: Bool) {
+    objectWillChange.send()
+    HotkeyStore.shared.setSnapShortcutsEnabled(enabled)
+  }
+
   func resetShortcut(_ identifier: HotkeyIdentifier) {
     setShortcut(identifier.defaultCombination, for: identifier)
   }

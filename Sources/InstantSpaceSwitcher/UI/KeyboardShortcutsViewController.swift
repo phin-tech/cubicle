@@ -19,6 +19,9 @@ final class KeyboardShortcutsViewController: NSViewController {
   private let clickEnabledCheckbox = NSButton(
     checkboxWithTitle: "Click a window for its Send to Space menu:", target: nil, action: nil)
   private let clickRecorder = ShortcutRecorderControl(frame: NSRect(x: 0, y: 0, width: 150, height: 22))
+  private let snapCheckbox = NSButton(
+    checkboxWithTitle: "Window snapping shortcuts (⌃⌥ arrows for halves, U I J K for quarters, ↩ maximize, "
+      + "C center, ⌫ restore)", target: nil, action: nil)
 
   private struct ShortcutRow {
     let identifier: HotkeyIdentifier
@@ -74,8 +77,12 @@ final class KeyboardShortcutsViewController: NSViewController {
     resetAllButton.translatesAutoresizingMaskIntoConstraints = false
 
     let clickRow = makeClickRow()
+    snapCheckbox.target = self
+    snapCheckbox.action = #selector(snapShortcutsChanged(_:))
+    snapCheckbox.translatesAutoresizingMaskIntoConstraints = false
 
     view.addSubview(scrollView)
+    view.addSubview(snapCheckbox)
     view.addSubview(clickRow)
     view.addSubview(resetAllButton)
 
@@ -83,7 +90,11 @@ final class KeyboardShortcutsViewController: NSViewController {
       scrollView.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
       scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
       scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-      scrollView.bottomAnchor.constraint(equalTo: clickRow.topAnchor, constant: -12),
+      scrollView.bottomAnchor.constraint(equalTo: snapCheckbox.topAnchor, constant: -12),
+
+      snapCheckbox.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      snapCheckbox.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
+      snapCheckbox.bottomAnchor.constraint(equalTo: clickRow.topAnchor, constant: -12),
 
       clickRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
       clickRow.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -20),
@@ -145,7 +156,12 @@ final class KeyboardShortcutsViewController: NSViewController {
     loadClickBinding()
   }
 
+  @objc private func snapShortcutsChanged(_ sender: NSButton) {
+    store.setSnapShortcutsEnabled(sender.state == .on)
+  }
+
   private func loadShortcuts() {
+    snapCheckbox.state = store.snapShortcutsEnabled ? .on : .off
     shortcuts = HotkeyIdentifier.allCases.map { id in
       ShortcutRow(
         identifier: id,
@@ -199,6 +215,8 @@ final class KeyboardShortcutsViewController: NSViewController {
     store.$showGridHotkey.receive(on: RunLoop.main).sink { [weak self] _ in self?.loadShortcuts() }
       .store(in: &cancellables)
     store.$sendWindowHotkey.receive(on: RunLoop.main).sink { [weak self] _ in self?.loadShortcuts() }
+      .store(in: &cancellables)
+    store.$snapHotkeys.receive(on: RunLoop.main).sink { [weak self] _ in self?.loadShortcuts() }
       .store(in: &cancellables)
     store.$enabledStates.receive(on: RunLoop.main).sink { [weak self] _ in self?.loadShortcuts() }
       .store(in: &cancellables)

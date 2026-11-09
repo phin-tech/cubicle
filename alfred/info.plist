@@ -19,11 +19,24 @@
 				<false/>
 			</dict>
 		</array>
+		<key>8B3D7C4A-5E6F-4A0C-9D9E-3C4F5A6B7C83</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>9C4E8D5B-6F7A-4B1D-8E0F-4D5A6B7C8D94</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
 	</dict>
 	<key>createdby</key>
 	<string>Sam</string>
 	<key>description</key>
-	<string>Jump to a Space by name with Cubicle</string>
+	<string>Jump to a Space by name and snap windows with Cubicle</string>
 	<key>disabled</key>
 	<false/>
 	<key>name</key>
@@ -110,9 +123,92 @@ exec "$CUBICLE" go "$1"</string>
 			<key>version</key>
 			<integer>2</integer>
 		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>alfredfiltersresults</key>
+				<false/>
+				<key>alfredfiltersresultsmatchmode</key>
+				<integer>0</integer>
+				<key>argumenttreatemptyqueryasnil</key>
+				<false/>
+				<key>argumenttrimmode</key>
+				<integer>0</integer>
+				<key>argumenttype</key>
+				<integer>1</integer>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>keyword</key>
+				<string>w</string>
+				<key>queuedelaycustom</key>
+				<integer>1</integer>
+				<key>queuedelayimmediatelyinitially</key>
+				<true/>
+				<key>queuedelaymode</key>
+				<integer>0</integer>
+				<key>queuemode</key>
+				<integer>2</integer>
+				<key>runningsubtext</key>
+				<string></string>
+				<key>script</key>
+				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/Helpers/cubicle)"
+if [ ! -x "$CUBICLE" ]; then
+  printf '{"items":[{"title":"Cubicle is not installed","subtitle":"Run: just install","valid":false}]}'
+  exit 0
+fi
+exec "$CUBICLE" actions --alfred "$1"</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>subtext</key>
+				<string>Snap the window you were in: left, top right, maximize, restore…</string>
+				<key>title</key>
+				<string>Cubicle: window commands</string>
+				<key>type</key>
+				<integer>0</integer>
+				<key>withspace</key>
+				<true/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.input.scriptfilter</string>
+			<key>uid</key>
+			<string>8B3D7C4A-5E6F-4A0C-9D9E-3C4F5A6B7C83</string>
+			<key>version</key>
+			<integer>3</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>concurrently</key>
+				<false/>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>script</key>
+				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/Helpers/cubicle)"
+# The argument is "snap &lt;action&gt;", made by cubicle actions --alfred; split it into words on purpose.
+exec "$CUBICLE" $1</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>type</key>
+				<integer>0</integer>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.action.script</string>
+			<key>uid</key>
+			<string>9C4E8D5B-6F7A-4B1D-8E0F-4D5A6B7C8D94</string>
+			<key>version</key>
+			<integer>2</integer>
+		</dict>
 	</array>
 	<key>readme</key>
 	<string>Type "@" and part of a Space's name to jump to it (for example @ino). Matching is fuzzy (ino finds innopts) and lists only the Spaces on the display your cursor is on, leaving out the one you are already on. The number of a Space also works.
+
+Type "w" and a window command to snap the window you were in (for example w left, w top right, w max, w restore).
 
 Needs the cubicle command: run "just install" in the Cubicle repo (links it to ~/.local/bin and installs the app).</string>
 	<key>uidata</key>
@@ -120,16 +216,30 @@ Needs the cubicle command: run "just install" in the Cubicle repo (links it to ~
 		<key>6F1B5A2E-3C4D-4E8A-9B7C-1A2D3E4F5A61</key>
 		<dict>
 			<key>xpos</key>
-			<real>50</real>
+			<real>50.0</real>
 			<key>ypos</key>
-			<real>50</real>
+			<real>50.0</real>
 		</dict>
 		<key>7A2C6B3F-4D5E-4F9B-8C8D-2B3E4F5A6B72</key>
 		<dict>
 			<key>xpos</key>
-			<real>300</real>
+			<real>300.0</real>
 			<key>ypos</key>
-			<real>50</real>
+			<real>50.0</real>
+		</dict>
+		<key>8B3D7C4A-5E6F-4A0C-9D9E-3C4F5A6B7C83</key>
+		<dict>
+			<key>xpos</key>
+			<real>50.0</real>
+			<key>ypos</key>
+			<real>200.0</real>
+		</dict>
+		<key>9C4E8D5B-6F7A-4B1D-8E0F-4D5A6B7C8D94</key>
+		<dict>
+			<key>xpos</key>
+			<real>300.0</real>
+			<key>ypos</key>
+			<real>200.0</real>
 		</dict>
 	</dict>
 	<key>variablesdontexport</key>

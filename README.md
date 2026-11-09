@@ -7,8 +7,9 @@ Cubicle is a fork of [InstantSpaceSwitcher](https://github.com/jurplel/InstantSp
 - **Space grid** (default Ctrl+Option+Cmd+Space): a grid of the Spaces on the display under your cursor, with arrow-key, number-key and click navigation.
 - **Search by name**: type to filter. Matching is fuzzy ("ino" finds "innopts") and ignores the Space you are already on.
 - **Custom Space names**: Settings > Spaces.
-- **`cubicle` CLI**: `cubicle list [--here] [query]`, `cubicle go <name|number>`, `cubicle left|right`, `cubicle grid`. It talks to the running app over a private local socket, so it needs no Accessibility permission of its own, and it starts Cubicle if it is not running.
-- **Alfred workflow** (`alfred/`): type `@` plus part of a Space's name, e.g. `@ino`. Needs the Alfred Powerpack.
+- **Window snapping**: halves, quarters, Maximize, Center and Restore, Rectangle-style. The shortcuts are Rectangle's (⌃⌥ + arrows, U/I/J/K, ↩, C, ⌫) and are off until you turn them on in Settings > Keyboard Shortcuts. Also in the ⌃⌥⌘-click window menu, `cubicle snap`, and Alfred's `w` keyword. Settings > General has a gap setting.
+- **`cubicle` CLI**: `cubicle list [--here] [query]`, `cubicle go <name|number>`, `cubicle left|right`, `cubicle grid`, `cubicle snap <action> [--app <name>|--window <id>|--previous]`, `cubicle windows [--json]`, `cubicle actions`, `cubicle gap [points]`. It talks to the running app over a private local socket, so it needs no Accessibility permission of its own, and it starts Cubicle if it is not running.
+- **Alfred workflow** (`alfred/`): type `@` plus part of a Space's name, e.g. `@ino`, or `w` plus a window command, e.g. `w left`. Needs the Alfred Powerpack.
 
 ### Install (from source)
 

@@ -11,12 +11,54 @@ public struct CubicleRequest: Codable, Equatable {
   public var here: Bool?
   /// For `list`: keep only Spaces matching this fuzzy query, best match first.
   public var query: String?
+  /// For window commands: which window to act on. With none of these it is the focused window.
+  public var app: String?
+  public var window: UInt32?
+  public var previous: Bool?
 
-  public init(command: String, argument: String? = nil, here: Bool? = nil, query: String? = nil) {
+  public init(
+    command: String, argument: String? = nil, here: Bool? = nil, query: String? = nil,
+    app: String? = nil, window: UInt32? = nil, previous: Bool? = nil
+  ) {
     self.command = command
     self.argument = argument
     self.here = here
     self.query = query
+    self.app = app
+    self.window = window
+    self.previous = previous
+  }
+}
+
+/// A window on the current Space, for `cubicle windows`.
+public struct CubicleWindowEntry: Codable, Equatable {
+  /// The window server's number for the window, which `--window` takes.
+  public var id: UInt32
+  public var app: String
+  public var bundleID: String?
+  public var title: String
+  /// Top-left-origin screen coordinates, in points.
+  public var x: Double
+  public var y: Double
+  public var width: Double
+  public var height: Double
+  public var isFocused: Bool
+  public var isMinimized: Bool
+
+  public init(
+    id: UInt32, app: String, bundleID: String?, title: String, x: Double, y: Double, width: Double,
+    height: Double, isFocused: Bool, isMinimized: Bool
+  ) {
+    self.id = id
+    self.app = app
+    self.bundleID = bundleID
+    self.title = title
+    self.x = x
+    self.y = y
+    self.width = width
+    self.height = height
+    self.isFocused = isFocused
+    self.isMinimized = isMinimized
   }
 }
 
@@ -39,11 +81,15 @@ public struct CubicleResponse: Codable, Equatable {
   public var ok: Bool
   public var message: String?
   public var spaces: [CubicleSpaceEntry]?
+  public var windows: [CubicleWindowEntry]?
 
-  public init(ok: Bool, message: String? = nil, spaces: [CubicleSpaceEntry]? = nil) {
+  public init(
+    ok: Bool, message: String? = nil, spaces: [CubicleSpaceEntry]? = nil, windows: [CubicleWindowEntry]? = nil
+  ) {
     self.ok = ok
     self.message = message
     self.spaces = spaces
+    self.windows = windows
   }
 }
 

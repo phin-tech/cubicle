@@ -1,4 +1,5 @@
 import AppKit
+import CubicleIPC
 
 /// Modifier-click a window (⌃⌥⌘-click unless changed in Settings → Keyboard) to get a menu of the Spaces on its
 /// display; picking one sends the window there. The menu bar's "Move Current Window to Space" uses the same items.
@@ -130,11 +131,41 @@ final class WindowClickMenu: NSObject {
 
   private func showMenu(at point: CGPoint) {
     guard let window = WindowMover.window(at: point) else { return }
-    guard let items = sendItems(for: window) else { return NSSound.beep() }
     let menu = NSMenu()
     menu.autoenablesItems = false
-    items.forEach(menu.addItem)
+    // Without the Spaces (they couldn't be read) the snaps are still offered.
+    if let items = sendItems(for: window) {
+      items.forEach(menu.addItem)
+      menu.addItem(.separator())
+    }
+    snapItems(for: window).forEach(menu.addItem)
     menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+  }
+
+  /// A "Snap" heading, then one item per snap, acting on `window` (the one that was clicked).
+  func snapItems(for window: WindowMover.Target) -> [NSMenuItem] {
+    let header = NSMenuItem(title: "Snap", action: nil, keyEquivalent: "")
+    header.isEnabled = false
+    return [header] + SnapAction.allCases.map { action in
+      let item = NSMenuItem(title: action.displayName, action: #selector(pickSnap(_:)), keyEquivalent: "")
+      item.target = self
+      item.representedObject = SnapChoice(window: window, action: action)
+      return item
+    }
+  }
+
+  private final class SnapChoice: NSObject {
+    let window: WindowMover.Target
+    let action: SnapAction
+    init(window: WindowMover.Target, action: SnapAction) {
+      self.window = window
+      self.action = action
+    }
+  }
+
+  @objc private func pickSnap(_ sender: NSMenuItem) {
+    guard let choice = sender.representedObject as? SnapChoice else { return }
+    if !WindowSnapper.snap(choice.action, choice.window).ok { NSSound.beep() }
   }
 
   /// A heading naming the window, then one item per Space on its display (its own Space checked and disabled),

@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     _ = SpaceNameStore.shared
     SpaceCatalog.shared.startObserving()
     WindowClickMenu.shared.setEnabled(WindowClickMenu.isEnabledSetting)
+    AppHistory.shared.start()
     startCommandServer()
     UpdateChecker.shared.start()
     OnboardingWindowController.shared.onFinish = { [weak self] in self?.menuBarController.pointToStatusItem() }
@@ -324,6 +325,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       self?.registerHotkey(for: .sendWindow, combination: $0)
     }.store(in: &cancellables)
 
+    hotkeyStore.$snapHotkeys.receive(on: RunLoop.main).sink { [weak self] hotkeys in
+      for (identifier, combination) in hotkeys { self?.registerHotkey(for: identifier, combination: combination) }
+    }.store(in: &cancellables)
+
     hotkeyStore.$enabledStates.receive(on: RunLoop.main).sink { [weak self] _ in
       guard let self = self else { return }
       for identifier in HotkeyIdentifier.allCases {
@@ -398,6 +403,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SpaceGridWindow.shared.toggle()
       case .sendWindow:
         SpaceGridWindow.shared.toggleSend()
+      default:
+        if let action = identifier.snapAction { WindowSnapper.snap(action, beep: true) }
       }
     }
   }

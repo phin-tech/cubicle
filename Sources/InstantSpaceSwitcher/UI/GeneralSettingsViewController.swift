@@ -9,6 +9,7 @@ final class GeneralSettingsViewController: NSViewController {
     checkboxWithTitle: "Automatically turn off staging display when idle", target: nil, action: nil)
   private let stagingTimeoutField = NSTextField(string: "10")
   private let stagingTimeoutLabel = NSTextField(labelWithString: "Turn off after:")
+  private let gapField = NSTextField(string: "0")
 
   private let showOSDCheckbox = NSButton(
     checkboxWithTitle: "Show on-screen display when switching spaces", target: nil, action: nil)
@@ -133,6 +134,18 @@ final class GeneralSettingsViewController: NSViewController {
     stagingPopup.action = #selector(stagingDisplayChanged)
     formView.addRow(label: NSTextField(labelWithString: "Window Moves:"), control: NSTextField(
       labelWithString: "Click bindings and shortcuts for moving windows are in Keyboard."))
+    gapField.target = self
+    gapField.action = #selector(gapChanged)
+    let gapFormatter = NumberFormatter()
+    gapFormatter.minimum = 0
+    gapFormatter.maximum = NSNumber(value: WindowSnapper.maximumGap)
+    gapFormatter.allowsFloats = false
+    gapField.formatter = gapFormatter
+    gapField.widthAnchor.constraint(equalToConstant: 70).isActive = true
+    gapField.integerValue = WindowSnapper.gap
+    let gapRow = NSStackView(views: [gapField, NSTextField(labelWithString: "points between snapped windows (0–100)")])
+    gapRow.spacing = 8
+    formView.addRow(label: NSTextField(labelWithString: "Snap gap:"), control: gapRow)
     formView.addRow(label: NSTextField(labelWithString: "Stage windows on:"), control: stagingPopup)
     let stagingDisplayHint = NSTextField(
       wrappingLabelWithString: "A moving window waits here while its own display switches. A spare real display "
@@ -280,6 +293,11 @@ final class GeneralSettingsViewController: NSViewController {
   @objc private func stagingShutdownChanged(_ sender: NSButton) {
     VirtualDisplaySession.automaticShutdown = sender.state == .on
     updateStagingControls()
+  }
+
+  @objc private func gapChanged(_ sender: NSTextField) {
+    WindowSnapper.gap = sender.integerValue
+    sender.integerValue = WindowSnapper.gap
   }
 
   @objc private func stagingTimeoutChanged(_ sender: NSTextField) {

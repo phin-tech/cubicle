@@ -35,6 +35,13 @@ enum CommandHandler {
     case "grid":
       SpaceGridWindow.shared.show()
       return CubicleResponse(ok: true)
+    case "snap": return snap(request)
+    case "windows":
+      guard AXIsProcessTrusted() else {
+        return CubicleResponse(ok: false, message: "Accessibility is not granted to Cubicle.")
+      }
+      return CubicleResponse(ok: true, windows: WindowSnapper.listWindows())
+    case "gap": return gap(request.argument)
     default:
       return CubicleResponse(ok: false, message: "Unknown command '\(request.command)'.")
     }
@@ -116,6 +123,35 @@ enum CommandHandler {
     WindowSender.send(window, toIndex: target, route: route, stay: stay) { outcome in
       reply(CubicleResponse(ok: outcome.ok, message: outcome.details))
     }
+  }
+
+  /// Which window a window command acts on: `--window`, then `--app`, then `--previous`, else the focused one.
+  static func selector(for request: CubicleRequest) -> WindowSnapper.Selector {
+    if let id = request.window { return .window(id) }
+    if let app = request.app, !app.isEmpty { return .app(app) }
+    if request.previous == true { return .previous }
+    return .focused
+  }
+
+  private static func snap(_ request: CubicleRequest) -> CubicleResponse {
+    let name = request.argument ?? ""
+    guard let action = SnapAction(name: name) else {
+      let names = SnapAction.allCases.map(\.rawValue).joined(separator: ", ")
+      return CubicleResponse(ok: false, message: "Unknown snap '\(name)'. Use one of: \(names).")
+    }
+    let outcome = WindowSnapper.snap(action, selector(for: request))
+    return CubicleResponse(ok: outcome.ok, message: outcome.message)
+  }
+
+  private static func gap(_ argument: String?) -> CubicleResponse {
+    guard let argument, !argument.isEmpty else {
+      return CubicleResponse(ok: true, message: "\(WindowSnapper.gap)")
+    }
+    guard let value = Int(argument), (0...WindowSnapper.maximumGap).contains(value) else {
+      return CubicleResponse(ok: false, message: "The gap is a whole number of points from 0 to \(WindowSnapper.maximumGap).")
+    }
+    WindowSnapper.gap = value
+    return CubicleResponse(ok: true, message: "Gap set to \(value) pt.")
   }
 
   private static func step(_ direction: ISSDirection) -> CubicleResponse {
