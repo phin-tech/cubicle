@@ -4,7 +4,7 @@ import ServiceManagement
 
 final class GeneralSettingsViewController: NSViewController {
   private let windowClickMenuCheckbox = NSButton(
-    checkboxWithTitle: "⌃⌥⌘-right-click a window to send it to another Space", target: nil, action: nil)
+    checkboxWithTitle: "⌃⌥⌘-click a window to send it to another Space", target: nil, action: nil)
   private let stagingShutdownCheckbox = NSButton(
     checkboxWithTitle: "Automatically turn off staging display when idle", target: nil, action: nil)
   private let stagingTimeoutField = NSTextField(string: "10")

@@ -1,7 +1,6 @@
 import AppKit
 import ApplicationServices
 import Combine
-import ISS
 import SwiftUI
 
 struct OnboardingSpaceRow: Identifiable, Equatable {
@@ -99,13 +98,12 @@ final class OnboardingModel: ObservableObject {
   /// Rows for the display under the cursor. Names are only replaced when the set of Spaces changes, so a field
   /// you are typing in is never overwritten.
   func refreshSpaces() {
-    guard let (cells, info) = SpaceGridWindow.currentCells() else {
+    guard let spaces = SpaceCatalog.shared.spacesUnderCursor() else {
       if !rows.isEmpty { rows = [] }
       return
     }
-    let displayID = stringFromCStringBuffer(info.displayID)
-    let fresh = cells.map { cell -> OnboardingSpaceRow in
-      let key = SpaceCatalog.shared.identity(displayIdentifier: displayID, index: UInt32(cell.index))?.key
+    let fresh = SpaceGridWindow.cells(for: spaces).map { cell -> OnboardingSpaceRow in
+      let key = spaces.display.spaces[cell.index].identity.key
       return OnboardingSpaceRow(index: cell.index, key: key, name: cell.hasCustomName ? cell.title : "")
     }
     if fresh.map({ [String($0.index), $0.key ?? ""] }) != rows.map({ [String($0.index), $0.key ?? ""] }) {

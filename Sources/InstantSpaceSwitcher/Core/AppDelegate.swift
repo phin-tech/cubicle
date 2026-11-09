@@ -58,13 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     OnboardingWindowController.shared.onFinish = { [weak self] in self?.menuBarController.pointToStatusItem() }
     // After the menu bar item exists, so the welcome window can point at it.
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { OnboardingWindowController.shared.showIfFirstRun() }
-    iss_set_switch_event_callback { event in
-      DispatchQueue.main.async {
-        // A window move switches Spaces on its own; its OSD says where the window went instead.
-        guard !WindowSender.sending else { return }
-        OSDWindow.shared.show(
-          message: SpaceNameStore.shared.message(for: event), screenID: event.display.screenID)
-      }
+    // ISS calls this on the main thread as it posts a switch, on the display under the cursor.
+    iss_set_switch_callback { target in
+      MainActor.assumeIsolated { AppDelegate.showSwitchOSD(targetIndex: Int(target)) }
     }
 
     setupMainMenu()
@@ -83,7 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     commandServer?.stop()
-    iss_set_switch_event_callback(nil)
+    iss_set_switch_callback(nil)
     iss_destroy()
     stopObservingSpaceChanges()
     stopObservingAppActivation()
@@ -112,6 +108,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       commandServer = server
     } catch {
       print("Cubicle command server failed to start: \(error.localizedDescription)")
+    }
+  }
+
+  /// Names the Space a switch is heading to. The display is read now, while the cursor is still where the switch
+  /// happened.
+  private static func showSwitchOSD(targetIndex: Int) {
+    // A window move switches Spaces on its own; its OSD says where the window went instead.
+    guard !WindowSender.sending else { return }
+    let spaces = SpaceCatalog.shared.spacesUnderCursor()
+    // Off the cataloged displays, the index can't be trusted to name the right Space.
+    let identity = spaces.flatMap { $0.matched ? $0.display.spaces.first { $0.index == targetIndex }?.identity : nil }
+    let message = SpaceNameStore.shared.message(forTargetIndex: targetIndex, identity: identity)
+    DispatchQueue.main.async {
+      OSDWindow.shared.show(message: message, screenID: spaces?.screenID ?? 0)
     }
   }
 

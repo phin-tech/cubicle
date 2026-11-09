@@ -9,6 +9,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private var leftMenuItem: NSMenuItem?
   private var rightMenuItem: NSMenuItem?
   private var spacesMenuItem: NSMenuItem?
+  private var moveWindowMenuItem: NSMenuItem?
   private var cachedSpaceInfo: ISSSpaceInfo?
   private var refreshWorkItem: DispatchWorkItem?
   private var cancellables = Set<AnyCancellable>()
@@ -83,6 +84,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     menu.addItem(spacesItem)
     spacesMenuItem = spacesItem
 
+    let moveItem = NSMenuItem(title: "Move Current Window to Space", action: nil, keyEquivalent: "")
+    let moveSubmenu = NSMenu(title: "Move Current Window to Space")
+    moveSubmenu.delegate = self
+    moveSubmenu.autoenablesItems = false
+    moveItem.submenu = moveSubmenu
+    moveItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
+    menu.addItem(moveItem)
+    moveWindowMenuItem = moveItem
+
     menu.addItem(NSMenuItem.separator())
 
     let virtualItem = NSMenuItem(title: "Experimental Virtual Display", action: #selector(toggleVirtualDisplay(_:)), keyEquivalent: "")
@@ -129,7 +139,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   }
 
   private func updateVirtualDisplayItem() {
-    let display = iss_virtual_display_id()
+    let display = VirtualDisplay.id
     virtualDisplayItem?.state = display == 0 ? .off : .on
     if display == 0 {
       virtualDisplayItem?.title = "Experimental Virtual Display — Off"
@@ -144,9 +154,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   @objc private func toggleVirtualDisplay(_ sender: Any?) {
     guard !VirtualDisplaySession.moving else { return }
     VirtualDisplaySession.cancelCleanup()
-    if iss_virtual_display_id() != 0 {
-      iss_remove_virtual_display()
-    } else if iss_ensure_virtual_display() == 0 {
+    if VirtualDisplay.id != 0 {
+      VirtualDisplay.remove()
+    } else if VirtualDisplay.ensure() == 0 {
       let alert = NSAlert()
       alert.messageText = "Could not create the virtual display"
       alert.informativeText = "The experimental display API failed."
@@ -281,7 +291,26 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
   }
 
+  /// Opening Cubicle's menu doesn't activate it, so the focused window is still the one you were using.
+  private func updateMoveWindowMenu(_ submenu: NSMenu) {
+    submenu.removeAllItems()
+    let items: [NSMenuItem]
+    if !AXIsProcessTrusted() {
+      items = [NSMenuItem(title: "Needs Accessibility access", action: nil, keyEquivalent: "")]
+    } else if let window = WindowMover.focusedWindow(), window.pid != ProcessInfo.processInfo.processIdentifier {
+      items = WindowClickMenu.shared.sendItems(for: window)
+        ?? [NSMenuItem(title: "Can't read this display's Spaces", action: nil, keyEquivalent: "")]
+    } else {
+      items = [NSMenuItem(title: "No window to move", action: nil, keyEquivalent: "")]
+    }
+    for item in items where item.action == nil { item.isEnabled = false }
+    items.forEach(submenu.addItem)
+  }
+
   func menuNeedsUpdate(_ menu: NSMenu) {
+    if let submenu = moveWindowMenuItem?.submenu, menu === submenu {
+      return updateMoveWindowMenu(submenu)
+    }
     updateVirtualDisplayItem()
     if menu === statusItem.menu || menu === spacesMenuItem?.submenu {
       SpaceCatalog.shared.refresh()

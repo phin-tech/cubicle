@@ -58,9 +58,6 @@ extern CFArrayRef CGSCopyManagedDisplaySpaces(CGSConnectionID connection, CFStri
 extern CFStringRef CGSCopyActiveMenuBarDisplayIdentifier(CGSConnectionID connection) __attribute__((weak_import));
 extern CGSConnectionID CGSMainConnectionID(void) __attribute__((weak_import));
 extern CGSSpaceID CGSGetActiveSpace(CGSConnectionID connection) __attribute__((weak_import));
-extern CFArrayRef CGSCopySpacesForWindows(CGSConnectionID connection, int mask, CFArrayRef windows) __attribute__((weak_import));
-extern void CGSMoveWindowsToManagedSpace(CGSConnectionID connection, CFArrayRef windows, CGSSpaceID space) __attribute__((weak_import));
-extern AXError _AXUIElementGetWindow(AXUIElementRef element, CGWindowID *outWindow) __attribute__((weak_import));
 
 static CFMachPortRef globalTap = NULL;
 static CFRunLoopSourceRef globalSource = NULL;
@@ -80,7 +77,6 @@ static unsigned int syntheticEventsToPassThrough = 0;
 static double gestureSpeed = 2000.0;
 
 static ISSSwitchCallback switchCallback = NULL;
-static ISSSwitchEventCallback switchEventCallback = NULL;
 
 // Predictions dictionary: DisplayID (CFStringRef) -> Index (CFNumberRef)
 static CFMutableDictionaryRef predictionsDict = NULL;
@@ -133,9 +129,7 @@ static bool extract_space_info_from_display(CFDictionaryRef displayDict,
                                             CGSSpaceID activeSpace,
                                             bool hasActiveSpace,
                                             ISSSpaceInfo *outInfo);
-static bool load_space_info_for_display(ISSSpaceInfo *info, bool useCursorDisplay, CFArrayRef *outSpaces);
-static bool load_switch_info(ISSSpaceInfo *info, CFArrayRef *spaces);
-static void notify_space_switch(ISSSpaceInfo info, CFArrayRef spaces, unsigned int target);
+static bool load_space_info_for_display(ISSSpaceInfo *info, bool useCursorDisplay);
 static bool iss_perform_switch_gesture(ISSDirection direction, double velocity);
 static bool iss_switch_with_info(const ISSSpaceInfo *info, ISSDirection direction);
 static bool iss_should_block_switch(const ISSSpaceInfo *info, ISSDirection direction);
@@ -149,8 +143,7 @@ static ISSDirection iss_direction_from_gesture_value(double value) {
 // and notify the handler with the target index.
 static void swipe_override_switch(ISSDirection dir) {
     ISSSpaceInfo info;
-    CFArrayRef spaces = NULL;
-    if (!load_switch_info(&info, &spaces)) {
+    if (!iss_get_space_info(&info)) {
         iss_perform_switch_gesture(dir, gestureSpeed);
         return;
     }
@@ -161,9 +154,8 @@ static void swipe_override_switch(ISSDirection dir) {
 
     if (iss_switch_with_info(&info, dir)) {
         set_prediction(info.displayID, target);
-        notify_space_switch(info, spaces, target);
+        if (switchCallback) { switchCallback(target); }
     }
-    if (spaces) CFRelease(spaces);
 }
 
 static CGEventRef eventTapCallback(CGEventTapProxy proxy, CGEventType type,
@@ -356,7 +348,7 @@ static bool extract_space_info_from_display(CFDictionaryRef displayDict,
     return true;
 }
 
-static bool load_space_info_for_display(ISSSpaceInfo *info, bool useCursorDisplay, CFArrayRef *outSpaces) {
+static bool load_space_info_for_display(ISSSpaceInfo *info, bool useCursorDisplay) {
     if (!cgs_symbols_available()) {
         fprintf(stderr, "ISS: required CGS symbols missing\n");
         return false;
@@ -394,7 +386,6 @@ static bool load_space_info_for_display(ISSSpaceInfo *info, bool useCursorDispla
             uint32_t cursorDisplayCount = 0;
 
             if (CGGetDisplaysWithPoint(cursorLocation, 1, &cursorDisplay, &cursorDisplayCount) == kCGErrorSuccess && cursorDisplayCount > 0) {
-                info->screenID = cursorDisplay;
                 CFUUIDRef displayUUID = CGDisplayCreateUUIDFromDisplayID(cursorDisplay);
                 if (displayUUID) {
                     activeDisplayIdentifier = CFUUIDCreateString(NULL, displayUUID);
@@ -446,7 +437,6 @@ static bool load_space_info_for_display(ISSSpaceInfo *info, bool useCursorDispla
         }
     }
 
-    bool matchedDisplay = targetDisplay != NULL;
     if (!targetDisplay) {
         targetDisplay = fallbackDisplay;
     }
@@ -454,15 +444,6 @@ static bool load_space_info_for_display(ISSSpaceInfo *info, bool useCursorDispla
     bool success = false;
     if (targetDisplay) {
         success = extract_space_info_from_display(targetDisplay, activeSpace, hasActiveSpace, info);
-        if (success && outSpaces) {
-            CFStringRef identifier = CFDictionaryGetValue(targetDisplay, CFSTR("Display Identifier"));
-            bool sharedSpaces = identifier && CFGetTypeID(identifier) == CFStringGetTypeID() &&
-                CFEqual(identifier, CFSTR("Main"));
-            // A fallback display cannot reliably identify the switched desktop.
-            if (matchedDisplay || sharedSpaces) {
-                *outSpaces = CFRetain(CFDictionaryGetValue(targetDisplay, CFSTR("Spaces")));
-            }
-        }
     }
 
     if (activeDisplayIdentifier) {
@@ -471,70 +452,6 @@ static bool load_space_info_for_display(ISSSpaceInfo *info, bool useCursorDispla
     CFRelease(displays);
 
     return success;
-}
-
-CFArrayRef iss_copy_managed_display_spaces(void) {
-    if (!cgs_symbols_available()) return NULL;
-    CGSConnectionID connection = CGSMainConnectionID();
-    return connection ? CGSCopyManagedDisplaySpaces(connection, NULL) : NULL;
-}
-
-bool iss_get_space_identity(CFArrayRef spaces, unsigned int index, ISSSpaceIdentity *identity) {
-    if (!identity) return false;
-    memset(identity, 0, sizeof(*identity));
-    if (!spaces || CFGetTypeID(spaces) != CFArrayGetTypeID()) return false;
-
-    unsigned int position = 0;
-    unsigned int defaultDesktopCount = 0;
-    bool found = false;
-    for (CFIndex i = 0; i < CFArrayGetCount(spaces); i++) {
-        CFDictionaryRef space = CFArrayGetValueAtIndex(spaces, i);
-        if (!space || CFGetTypeID(space) != CFDictionaryGetTypeID()) continue;
-        CFNumberRef number = CFDictionaryGetValue(space, CFSTR("id64"));
-        uint64_t spaceID = 0;
-        if (!number || CFGetTypeID(number) != CFNumberGetTypeID() ||
-            !CFNumberGetValue(number, kCFNumberSInt64Type, &spaceID)) continue;
-
-        CFStringRef uuid = CFDictionaryGetValue(space, CFSTR("uuid"));
-        bool hasUUID = uuid && CFGetTypeID(uuid) == CFStringGetTypeID() && CFStringGetLength(uuid) > 0;
-        CFNumberRef typeNumber = CFDictionaryGetValue(space, CFSTR("type"));
-        int type = -1;
-        if (typeNumber && CFGetTypeID(typeNumber) == CFNumberGetTypeID()) {
-            CFNumberGetValue(typeNumber, kCFNumberIntType, &type);
-        }
-        bool isDefaultDesktop = type == 0 && (!uuid ||
-            (CFGetTypeID(uuid) == CFStringGetTypeID() && CFStringGetLength(uuid) == 0));
-        if (isDefaultDesktop) defaultDesktopCount++;
-
-        if (position++ != index) continue;
-        found = true;
-        identity->spaceID = spaceID;
-        identity->isDefaultDesktop = isDefaultDesktop;
-        if (hasUUID) {
-            if (!CFStringGetCString(uuid, identity->uuid, sizeof(identity->uuid), kCFStringEncodingUTF8)) {
-                identity->uuid[0] = '\0';
-            }
-            return true;
-        }
-    }
-
-    // Ambiguous unnamed desktops must not share a saved name.
-    identity->isDefaultDesktop = identity->isDefaultDesktop && defaultDesktopCount == 1;
-    return found;
-}
-
-static bool load_switch_info(ISSSpaceInfo *info, CFArrayRef *spaces) {
-    memset(info, 0, sizeof(*info));
-    return load_space_info_for_display(info, true, switchEventCallback ? spaces : NULL);
-}
-
-static void notify_space_switch(ISSSpaceInfo info, CFArrayRef spaces, unsigned int target) {
-    if (switchCallback) switchCallback(target);
-    if (switchEventCallback) {
-        ISSSwitchEvent event = { .display = info, .targetIndex = target };
-        iss_get_space_identity(spaces, target, &event.space);
-        switchEventCallback(event);
-    }
 }
 
 static bool iss_should_block_switch(const ISSSpaceInfo *info, ISSDirection direction) {
@@ -836,7 +753,7 @@ bool iss_get_space_info(ISSSpaceInfo *info) {
     }
 
     memset(info, 0, sizeof(*info));
-    return load_space_info_for_display(info, true, NULL);
+    return load_space_info_for_display(info, true);
 }
 
 bool iss_get_menubar_space_info(ISSSpaceInfo *info) {
@@ -845,7 +762,7 @@ bool iss_get_menubar_space_info(ISSSpaceInfo *info) {
     }
 
     memset(info, 0, sizeof(*info));
-    return load_space_info_for_display(info, false, NULL);
+    return load_space_info_for_display(info, false);
 }
 
 static bool iss_switch_with_info(const ISSSpaceInfo *info, ISSDirection direction) {
@@ -861,19 +778,16 @@ static bool iss_switch_with_info(const ISSSpaceInfo *info, ISSDirection directio
 
 bool iss_switch(ISSDirection direction) {
     ISSSpaceInfo info;
-    CFArrayRef spaces = NULL;
-    if (load_switch_info(&info, &spaces)) {
+    if (iss_get_space_info(&info)) {
         unsigned int predicted;
         unsigned int current = get_prediction(info.displayID, &predicted) ? predicted : info.currentIndex;
         unsigned int target = direction == ISSDirectionLeft ? current - 1 : current + 1;
 
         if (!iss_switch_with_info(&info, direction)) {
-            if (spaces) CFRelease(spaces);
             return false;
         }
         set_prediction(info.displayID, target);
-        notify_space_switch(info, spaces, target);
-        if (spaces) CFRelease(spaces);
+        if (switchCallback) { switchCallback(target); }
         return true;
     }
 
@@ -882,8 +796,7 @@ bool iss_switch(ISSDirection direction) {
 
 bool iss_switch_to_index(unsigned int targetIndex) {
     ISSSpaceInfo info;
-    CFArrayRef spaces = NULL;
-    if (!load_switch_info(&info, &spaces)) {
+    if (!iss_get_space_info(&info)) {
         return false;
     }
 
@@ -898,7 +811,6 @@ bool iss_switch_to_index(unsigned int targetIndex) {
     unsigned int currentIndex = get_prediction(info.displayID, &predicted) ? predicted : info.currentIndex;
 
     if (currentIndex == targetIndex) {
-        if (spaces) CFRelease(spaces);
         return !outOfBounds;
     }
 
@@ -910,14 +822,12 @@ bool iss_switch_to_index(unsigned int targetIndex) {
 
     for (unsigned int i = 0; i < steps; i++) {
         if (!iss_perform_switch_gesture(direction, velocity)) {
-            if (spaces) CFRelease(spaces);
             return false;
         }
     }
 
     set_prediction(info.displayID, targetIndex);
-    notify_space_switch(info, spaces, targetIndex);
-    if (spaces) CFRelease(spaces);
+    if (switchCallback) { switchCallback(targetIndex); }
     return !outOfBounds;
 }
 
@@ -944,77 +854,4 @@ void iss_reset_predictions(void) {
 
 void iss_set_switch_callback(ISSSwitchCallback callback) {
     switchCallback = callback;
-}
-
-void iss_set_switch_event_callback(ISSSwitchEventCallback callback) {
-    switchEventCallback = callback;
-}
-
-// MARK: - Windows
-
-bool iss_window_id_for_ax_element(const void *elementPtr, uint32_t *outWindowID) {
-    AXUIElementRef element = (AXUIElementRef)elementPtr;
-    if (!element || !outWindowID || !_AXUIElementGetWindow) return false;
-    CGWindowID wid = 0;
-    if (_AXUIElementGetWindow(element, &wid) != kAXErrorSuccess || wid == 0) return false;
-    *outWindowID = wid;
-    return true;
-}
-
-static CFArrayRef iss_copy_window_number_array(uint32_t windowID) {
-    int64_t value = windowID;
-    CFNumberRef number = CFNumberCreate(NULL, kCFNumberSInt64Type, &value);
-    if (!number) return NULL;
-    CFArrayRef array = CFArrayCreate(NULL, (const void **)&number, 1, &kCFTypeArrayCallBacks);
-    CFRelease(number);
-    return array;
-}
-
-uint64_t iss_space_for_window(uint32_t windowID) {
-    if (!CGSCopySpacesForWindows || !CGSMainConnectionID) return 0;
-    CFArrayRef windows = iss_copy_window_number_array(windowID);
-    if (!windows) return 0;
-    // 7 = current, other and user spaces
-    CFArrayRef spaces = CGSCopySpacesForWindows(CGSMainConnectionID(), 7, windows);
-    CFRelease(windows);
-    uint64_t result = 0;
-    if (spaces) {
-        if (CFArrayGetCount(spaces) > 0) {
-            CFNumberRef first = (CFNumberRef)CFArrayGetValueAtIndex(spaces, 0);
-            if (first) CFNumberGetValue(first, kCFNumberSInt64Type, &result);
-        }
-        CFRelease(spaces);
-    }
-    return result;
-}
-
-bool iss_move_window_to_space_direct(uint32_t windowID, uint64_t spaceID) {
-    if (!CGSMoveWindowsToManagedSpace || !CGSMainConnectionID) return false;
-    CFArrayRef windows = iss_copy_window_number_array(windowID);
-    if (!windows) return false;
-    CGSMoveWindowsToManagedSpace(CGSMainConnectionID(), windows, (CGSSpaceID)spaceID);
-    CFRelease(windows);
-    return true;
-}
-
-// SkyLight calls behind yabai's no-SIP workaround: tag the Space with a temporary compat ID, move the window to that
-// "workspace", then clear the tag. Looked up at runtime so a missing symbol just disables this path.
-typedef CGError (*SLSSpaceSetCompatIDFn)(int connection, uint64_t space, int workspace);
-typedef CGError (*SLSSetWindowListWorkspaceFn)(int connection, uint32_t *windows, int count, int workspace);
-
-bool iss_move_window_to_space_compat(uint32_t windowID, uint64_t spaceID) {
-    static void *skylight = NULL;
-    if (!skylight) skylight = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY);
-    if (!skylight || !CGSMainConnectionID) return false;
-    SLSSpaceSetCompatIDFn setCompat = (SLSSpaceSetCompatIDFn)dlsym(skylight, "SLSSpaceSetCompatID");
-    SLSSetWindowListWorkspaceFn setWorkspace = (SLSSetWindowListWorkspaceFn)dlsym(skylight, "SLSSetWindowListWorkspace");
-    if (!setCompat || !setWorkspace) return false;
-
-    const int tag = 0x63756269; // 'cubi'
-    int cid = CGSMainConnectionID();
-    uint32_t wid = windowID;
-    setCompat(cid, spaceID, tag);
-    setWorkspace(cid, &wid, 1, tag);
-    setCompat(cid, spaceID, 0);
-    return true;
 }

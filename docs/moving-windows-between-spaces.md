@@ -62,9 +62,11 @@ macOS 27? Short answer: not through any private API or the minimize trick we fou
 switches Spaces does work, but it's visible.
 
 The spike is the `cubicle send <name|number>` command, which moves the focused window with technique 5 below. Code:
-`Sources/InstantSpaceSwitcher/Core/WindowMover.swift`, `CommandHandler.send`, and the `iss_*window*` helpers at the end
-of `Sources/ISS/ISS.c`. Each attempt checks the window's Space afterwards with `CGSCopySpacesForWindows`, because the
-blocked calls return without error.
+`Sources/InstantSpaceSwitcher/Core/WindowMover.swift`, `WindowSender.swift`, and the private calls in
+`WindowServer.swift` and `VirtualDisplay.swift` (Cubicle keeps its own private calls in Swift so `Sources/ISS` stays
+identical to upstream). Each attempt checks the window's Space afterwards with `CGSCopySpacesForWindows`, because the
+blocked calls return without error. The direct `CGSMoveWindowsToManagedSpace` and compat-ID attempts were removed
+once they proved blocked on macOS 27.
 
 ## What we tried
 

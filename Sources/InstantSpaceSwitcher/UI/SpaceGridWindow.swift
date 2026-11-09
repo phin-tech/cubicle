@@ -122,10 +122,10 @@ final class SpaceGridWindow {
     if isVisible { return close() }
     guard AXIsProcessTrusted() else { return Self.report("Accessibility is not granted to Cubicle.") }
     guard let window = WindowMover.focusedWindow() else { return Self.report("Could not find the focused window.") }
-    guard let (cells, info) = WindowSender.spaces(for: window) else {
+    guard let spaces = WindowSender.spaces(for: window) else {
       return Self.report("Could not read the Spaces on the window's display.")
     }
-    present(cells: cells, info: info, sending: window)
+    present(spaces, sending: window)
   }
 
   func close() {
@@ -134,27 +134,27 @@ final class SpaceGridWindow {
   }
 
   func show() {
-    guard let (cells, info) = Self.currentCells() else {
+    guard let spaces = SpaceCatalog.shared.spacesUnderCursor() else {
       NSSound.beep()
       return
     }
-    present(cells: cells, info: info, sending: nil)
+    present(spaces, sending: nil)
   }
 
   /// `sending` is the window send mode moves; without it, the grid switches Spaces, and ⇧Return sends the
   /// focused window instead.
-  private func present(cells: [SpaceGridCell], info: ISSSpaceInfo, sending: WindowMover.Target?) {
-    let screen = Self.screen(for: info.screenID) ?? NSScreen.main
+  private func present(_ spaces: DisplaySpaces, sending: WindowMover.Target?) {
+    let screen = Self.screen(for: spaces.screenID) ?? NSScreen.main
     guard let screen else { return }
 
     close()
     let view = SpaceGridView(
-      cells: cells, currentIndex: Int(info.currentIndex), sendingName: sending?.displayName)
+      cells: Self.cells(for: spaces), currentIndex: spaces.currentIndex, sendingName: sending?.displayName)
     view.onActivate = { [weak self] index, send in
       guard let self else { return }
       self.close()
       if send {
-        self.send(sending, toIndex: index, info: info)
+        self.send(sending, toIndex: index, spaces: spaces)
       } else {
         DispatchQueue.main.async {
           if !iss_switch_to_index(UInt32(index)) { NSSound.beep() }
@@ -177,16 +177,16 @@ final class SpaceGridWindow {
   }
 
   /// The grid's panel doesn't activate Cubicle, so the focused window is still the one you were using.
-  private func send(_ window: WindowMover.Target?, toIndex index: Int, info: ISSSpaceInfo) {
-    guard AXIsProcessTrusted() else { return Self.report("Accessibility is not granted to Cubicle.", screenID: info.screenID) }
+  private func send(_ window: WindowMover.Target?, toIndex index: Int, spaces: DisplaySpaces) {
+    guard AXIsProcessTrusted() else { return Self.report("Accessibility is not granted to Cubicle.", screenID: spaces.screenID) }
     guard let window = window ?? WindowMover.focusedWindow() else {
-      return Self.report("Could not find the focused window.", screenID: info.screenID)
+      return Self.report("Could not find the focused window.", screenID: spaces.screenID)
     }
     // The index means a Space on the grid's display.
-    if info.screenID != 0, !CGDisplayBounds(info.screenID).contains(window.anchor) {
-      return Self.report("\(window.appName) is on another display.", screenID: info.screenID)
+    if spaces.screenID != 0, !CGDisplayBounds(spaces.screenID).contains(window.anchor) {
+      return Self.report("\(window.appName) is on another display.", screenID: spaces.screenID)
     }
-    WindowSender.sendShowingProgress(window, toIndex: index, screenID: info.screenID)
+    WindowSender.sendShowingProgress(window, toIndex: index, screenID: spaces.screenID)
   }
 
   private static func report(_ message: String, screenID: UInt32 = 0) {
@@ -194,19 +194,12 @@ final class SpaceGridWindow {
     OSDWindow.shared.show(message: message, screenID: screenID, force: true, duration: 2.5)
   }
 
-  /// The cells for the display under the cursor, with that display's info, or nil if unavailable.
-  static func currentCells() -> (cells: [SpaceGridCell], info: ISSSpaceInfo)? {
-    var info = ISSSpaceInfo()
-    guard iss_get_space_info(&info), info.spaceCount > 0 else { return nil }
-
-    SpaceCatalog.shared.refresh()
-    let displayID = stringFromCStringBuffer(info.displayID)
-    let cells = (0..<Int(info.spaceCount)).map { index -> SpaceGridCell in
-      let identity = SpaceCatalog.shared.identity(displayIdentifier: displayID, index: UInt32(index))
-      let name = SpaceNameStore.shared.name(for: identity?.key)
+  /// A display's Spaces as grid cells, named where you named them.
+  static func cells(for spaces: DisplaySpaces) -> [SpaceGridCell] {
+    spaces.display.spaces.enumerated().map { index, space in
+      let name = SpaceNameStore.shared.name(for: space.identity.key)
       return SpaceGridCell(index: index, title: name ?? String(index + 1), hasCustomName: name != nil)
     }
-    return (cells, info)
   }
 
   private static func screen(for id: UInt32) -> NSScreen? {

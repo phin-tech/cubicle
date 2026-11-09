@@ -2,7 +2,6 @@
 #define _ISS_H
 
 #include <stdbool.h>
-#include <stdint.h>
 #include <CoreFoundation/CoreFoundation.h>
 
 /** @brief Initialize resources
@@ -26,30 +25,7 @@ typedef struct {
     unsigned int currentIndex; /**< Zero-based index of the active space */
     unsigned int spaceCount;   /**< Total number of user-visible spaces */
     char displayID[128];       /**< UUID string of the display */
-    uint32_t screenID;         /**< Physical display under the cursor, or zero */
 } ISSSpaceInfo;
-
-typedef struct {
-    uint64_t spaceID;
-    char uuid[128];
-    bool isDefaultDesktop; /**< The display's only desktop without a UUID */
-} ISSSpaceIdentity;
-
-typedef struct {
-    ISSSpaceInfo display;
-    unsigned int targetIndex;
-    ISSSpaceIdentity space;
-} ISSSwitchEvent;
-
-/** @brief Copies the display/space catalog for settings and menu labels. */
-CFArrayRef iss_copy_managed_display_spaces(void) CF_RETURNS_RETAINED;
-
-/** @brief Resolves a zero-based space index in a display's Spaces array. */
-bool iss_get_space_identity(CFArrayRef spaces, unsigned int index, ISSSpaceIdentity *identity);
-
-/** @brief Reports the target and physical screen captured for a switch. */
-typedef void (*ISSSwitchEventCallback)(ISSSwitchEvent event);
-void iss_set_switch_event_callback(ISSSwitchEventCallback callback);
 
 /**
  * @brief Performs the space switch if the requested move is within bounds.
@@ -141,32 +117,5 @@ void iss_set_overlay_detection_enabled(bool enabled);
  * @param speed The velocity value for the gesture
  */
 void iss_set_gesture_speed(double speed);
-
-// MARK: - Windows
-
-/** @brief Resolves the CGWindowID behind an Accessibility window element (private AX call). */
-bool iss_window_id_for_ax_element(const void *element, uint32_t *outWindowID);
-
-/** @brief The first Space a window is on, or 0 if unknown. */
-uint64_t iss_space_for_window(uint32_t windowID);
-
-/**
- * @brief Asks the window server to move another app's window to a Space. Since macOS 14.5 this is
- * often silently ignored without SIP disabled; check iss_space_for_window afterwards.
- * @return false only if the private call is unavailable.
- */
-bool iss_move_window_to_space_direct(uint32_t windowID, uint64_t spaceID);
-
-/**
- * @brief yabai's no-SIP workaround: move via a temporary Space compat ID. May be ignored on newer macOS; check
- * iss_space_for_window afterwards.
- * @return false only if the private calls are unavailable.
- */
-bool iss_move_window_to_space_compat(uint32_t windowID, uint64_t spaceID);
-
-/** Experimental process-lifetime staging display; main-thread only. Returns 0 on failure. */
-uint32_t iss_ensure_virtual_display(void);
-uint32_t iss_virtual_display_id(void);
-void iss_remove_virtual_display(void);
 
 #endif /* _ISS_H */

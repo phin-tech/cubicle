@@ -1,10 +1,11 @@
 import AppKit
-import ISS
 
-/// ⌃⌥⌘-right-click a window to get a menu of the Spaces on its display; picking one sends the window there.
+/// ⌃⌥⌘-click (or right-click) a window to get a menu of the Spaces on its display; picking one sends the window
+/// there. The menu bar's "Move Current Window to Space" uses the same items.
 ///
 /// Other apps' own context menus can't be extended, so Cubicle catches the click before the app does and shows
-/// its own menu. The three modifiers match the default switching shortcuts and keep ordinary right-clicks alone.
+/// its own menu. The three modifiers match the default switching shortcuts and keep ordinary clicks alone; the
+/// catch is that ⌃⌥⌘-drag no longer reaches other apps while this is on.
 @MainActor
 final class WindowClickMenu: NSObject {
   static let shared = WindowClickMenu()
@@ -25,8 +26,19 @@ final class WindowClickMenu: NSObject {
   private var retryScheduled = false
   private var enabled = false
   /// The click's button-up belongs to the menu too, so the app never sees half a click.
-  private var swallowNextMouseUp = false
-  private var pending: (window: WindowMover.Target, screenID: UInt32)?
+  private var swallowedButtons: Set<CGEventType> = []
+
+  /// What a Space item sends where.
+  private final class Choice: NSObject {
+    let window: WindowMover.Target
+    let index: Int
+    let screenID: UInt32
+    init(window: WindowMover.Target, index: Int, screenID: UInt32) {
+      self.window = window
+      self.index = index
+      self.screenID = screenID
+    }
+  }
 
   func setEnabled(_ enabled: Bool) {
     self.enabled = enabled
@@ -37,7 +49,8 @@ final class WindowClickMenu: NSObject {
     if let eventTap, CFMachPortIsValid(eventTap) { return }
     removeEventTap()
 
-    let mask = CGEventMask(1 << CGEventType.rightMouseDown.rawValue) | CGEventMask(1 << CGEventType.rightMouseUp.rawValue)
+    let mask = [CGEventType.leftMouseDown, .leftMouseUp, .rightMouseDown, .rightMouseUp]
+      .reduce(CGEventMask(0)) { $0 | CGEventMask(1 << $1.rawValue) }
     guard
       let eventTap = CGEvent.tapCreate(
         tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap, eventsOfInterest: mask,
@@ -81,17 +94,16 @@ final class WindowClickMenu: NSObject {
     switch type {
     case .tapDisabledByTimeout, .tapDisabledByUserInput:
       if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: true) }
-    case .rightMouseDown:
+    case .leftMouseDown, .rightMouseDown:
       let flags = event.flags.intersection([.maskControl, .maskAlternate, .maskCommand, .maskShift])
       guard flags == Self.modifiers else { break }
-      swallowNextMouseUp = true
+      swallowedButtons.insert(type == .leftMouseDown ? .leftMouseUp : .rightMouseUp)
       let point = event.location
       // Return from the tap first: finding the window asks its app, and the menu runs its own loop.
       DispatchQueue.main.async { self.showMenu(at: point) }
       return nil
-    case .rightMouseUp where swallowNextMouseUp:
-      swallowNextMouseUp = false
-      return nil
+    case .leftMouseUp, .rightMouseUp:
+      if swallowedButtons.remove(type) != nil { return nil }
     default:
       break
     }
@@ -100,41 +112,41 @@ final class WindowClickMenu: NSObject {
 
   private func showMenu(at point: CGPoint) {
     guard let window = WindowMover.window(at: point) else { return }
-    guard let (cells, info) = WindowSender.spaces(for: window) else { return NSSound.beep() }
-
+    guard let items = sendItems(for: window) else { return NSSound.beep() }
     let menu = NSMenu()
     menu.autoenablesItems = false
+    items.forEach(menu.addItem)
+    menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+  }
+
+  /// A heading naming the window, then one item per Space on its display (its own Space checked and disabled),
+  /// or nil when the Spaces can't be read. Menus holding these need `autoenablesItems = false`.
+  func sendItems(for window: WindowMover.Target) -> [NSMenuItem]? {
+    guard let spaces = WindowSender.spaces(for: window) else { return nil }
     let header = NSMenuItem(title: "Send “\(window.displayName)” to", action: nil, keyEquivalent: "")
     header.isEnabled = false
-    menu.addItem(header)
-    for cell in cells {
+    return [header] + SpaceGridWindow.cells(for: spaces).map { cell in
       let item = NSMenuItem(title: WindowSender.name(of: cell), action: #selector(pick(_:)), keyEquivalent: "")
       item.target = self
-      item.tag = cell.index
+      item.representedObject = Choice(window: window, index: cell.index, screenID: spaces.screenID)
       if cell.index < 9 {
         item.keyEquivalent = String(cell.index + 1)
         item.keyEquivalentModifierMask = []
       }
-      if cell.index == Int(info.currentIndex) {
+      if cell.index == spaces.currentIndex {
         // Where the window already is.
         item.state = .on
         item.isEnabled = false
       }
-      menu.addItem(item)
+      return item
     }
-
-    pending = (window, info.screenID)
-    menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-    // popUp returns after the choice's action has run.
-    pending = nil
   }
 
   @objc private func pick(_ sender: NSMenuItem) {
-    guard let (window, screenID) = pending else { return }
-    let index = sender.tag
+    guard let choice = sender.representedObject as? Choice else { return }
     // Let the menu finish closing before the move starts grabbing and switching.
     DispatchQueue.main.async {
-      WindowSender.sendShowingProgress(window, toIndex: index, screenID: screenID)
+      WindowSender.sendShowingProgress(choice.window, toIndex: choice.index, screenID: choice.screenID)
     }
   }
 }

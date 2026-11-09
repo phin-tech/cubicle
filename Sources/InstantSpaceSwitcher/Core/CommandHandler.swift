@@ -45,11 +45,10 @@ enum CommandHandler {
 
     var cursorDisplayID: String?
     if request.here == true {
-      var info = ISSSpaceInfo()
-      guard iss_get_space_info(&info) else {
+      guard let spaces = SpaceCatalog.shared.spacesUnderCursor() else {
         return CubicleResponse(ok: false, message: "Could not read the display under the cursor.")
       }
-      cursorDisplayID = stringFromCStringBuffer(info.displayID)
+      cursorDisplayID = spaces.display.identifier
     }
 
     var entries: [CubicleSpaceEntry] = []
@@ -96,9 +95,10 @@ enum CommandHandler {
     guard let window = WindowMover.focusedWindow() else {
       return reply(CubicleResponse(ok: false, message: "Could not find the focused window."))
     }
-    guard let (cells, _) = WindowSender.spaces(for: window) else {
+    guard let spaces = WindowSender.spaces(for: window) else {
       return reply(CubicleResponse(ok: false, message: "Could not read the Spaces on the window's display."))
     }
+    let cells = SpaceGridWindow.cells(for: spaces)
 
     let target: Int
     if let number = Int(trimmed) {
@@ -128,10 +128,11 @@ enum CommandHandler {
   private static func go(_ query: String) -> CubicleResponse {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return CubicleResponse(ok: false, message: "Usage: cubicle go <name|number>") }
-    guard let (cells, info) = SpaceGridWindow.currentCells() else {
+    guard let spaces = SpaceCatalog.shared.spacesUnderCursor() else {
       return CubicleResponse(ok: false, message: "Could not read the Spaces on the current display.")
     }
 
+    let cells = SpaceGridWindow.cells(for: spaces)
     let target: Int
     var alternatives: [String] = []
     if let number = Int(trimmed) {
@@ -149,7 +150,7 @@ enum CommandHandler {
     }
 
     let title = cells[target].title
-    if target == Int(info.currentIndex) {
+    if target == spaces.currentIndex {
       return CubicleResponse(ok: true, message: "Already on \(title).")
     }
     guard iss_switch_to_index(UInt32(target)) else {

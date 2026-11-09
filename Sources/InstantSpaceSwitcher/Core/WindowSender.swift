@@ -1,5 +1,4 @@
 import AppKit
-import ISS
 
 /// Sends a window to another Space on its display. The CLI (`cubicle send`), the grid's send mode and the
 /// right-click menu all go through here.
@@ -33,13 +32,9 @@ enum WindowSender {
     NSScreen.screensHaveSeparateSpaces ? (.viaVirtual, true) : (.drag, false)
   }
 
-  /// The Spaces on the window's display. Space lookups follow the cursor, so it visits the window's title bar
-  /// for a moment.
-  static func spaces(for window: WindowMover.Target) -> (cells: [SpaceGridCell], info: ISSSpaceInfo)? {
-    let savedCursor = CGEvent(source: nil)?.location ?? .zero
-    CGWarpMouseCursorPosition(window.anchor)
-    defer { CGWarpMouseCursorPosition(savedCursor) }
-    return SpaceGridWindow.currentCells()
+  /// The Spaces on the window's display.
+  static func spaces(for window: WindowMover.Target) -> DisplaySpaces? {
+    SpaceCatalog.shared.spaces(at: window.anchor)
   }
 
   /// "Mail", or "Space 2" for a Space without a name.
@@ -55,18 +50,17 @@ enum WindowSender {
 
     guard !sending else { return fail("Already moving a window.") }
     guard AXIsProcessTrusted() else { return fail("Accessibility is not granted to Cubicle.") }
-    guard let (cells, info) = spaces(for: window) else {
+    guard let spaces = spaces(for: window) else {
       return fail("Could not read the Spaces on the window's display.")
     }
+    let cells = SpaceGridWindow.cells(for: spaces)
     guard cells.indices.contains(target) else {
       return fail("There is no Space \(target + 1); this display has \(cells.count).")
     }
     let title = name(of: cells[target])
-    let displayID = stringFromCStringBuffer(info.displayID)
-    guard let spaceID = SpaceCatalog.shared.displays.first(where: { $0.identifier == displayID })?
-      .spaces.first(where: { $0.index == UInt32(target) })?.spaceID, spaceID != 0
-    else { return fail("Could not resolve \(title)'s Space ID.") }
-    let before = iss_space_for_window(window.windowID)
+    let spaceID = spaces.display.spaces[target].spaceID
+    guard spaceID != 0 else { return fail("Could not resolve \(title)'s Space ID.") }
+    let before = WindowServer.space(ofWindow: window.windowID)
     if before == spaceID {
       let message = "\(window.appName) is already on \(title)."
       return completion(Outcome(ok: true, summary: message, details: message))
@@ -89,7 +83,7 @@ enum WindowSender {
       guard NSScreen.screensHaveSeparateSpaces else { return abort("Requires Displays have separate Spaces.") }
       guard VirtualDisplaySession.begin() else { return abort("A virtual-display move is already running.") }
       let setupStarted = ProcessInfo.processInfo.systemUptime
-      let display = iss_ensure_virtual_display()
+      let display = VirtualDisplay.ensure()
       guard display != 0 else {
         VirtualDisplaySession.end(window: window, display: display)
         return abort("Could not create the experimental virtual display.")
@@ -107,7 +101,7 @@ enum WindowSender {
         let setupMS = Int((ProcessInfo.processInfo.systemUptime - setupStarted) * 1000)
         WindowMover.moveViaDisplay(
           window, toIndex: target, spaceID: spaceID, stagingDisplayID: display,
-          returnToIndex: stay ? Int(info.currentIndex) : nil
+          returnToIndex: stay ? spaces.currentIndex : nil
         ) { moved, details in
           VirtualDisplaySession.end(window: window, display: display)
           let lifecycle = VirtualDisplaySession.automaticShutdown
@@ -118,14 +112,14 @@ enum WindowSender {
       }
     case .viaDisplay:
       WindowMover.moveViaDisplay(
-        window, toIndex: target, spaceID: spaceID, returnToIndex: stay ? Int(info.currentIndex) : nil
+        window, toIndex: target, spaceID: spaceID, returnToIndex: stay ? spaces.currentIndex : nil
       ) { moved, details in
         finish(moved, "via display: \(details)")
       }
     case .drag, .quickDrag:
       // The private move calls and minimize/restore don't work on macOS 27; see docs/moving-windows-between-spaces.md.
       WindowMover.moveByDragging(
-        window, from: Int(info.currentIndex), toIndex: target, spaceID: spaceID, quickSwitch: route == .quickDrag
+        window, from: spaces.currentIndex, toIndex: target, spaceID: spaceID, quickSwitch: route == .quickDrag
       ) { moved in
         finish(moved, "drag: " + WindowMover.lastDragReport)
       }

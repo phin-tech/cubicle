@@ -1,5 +1,4 @@
 import Foundation
-import ISS
 
 func stringFromCStringBuffer<T>(_ buffer: T) -> String {
   var buffer = buffer
@@ -11,11 +10,10 @@ func stringFromCStringBuffer<T>(_ buffer: T) -> String {
 struct SpaceIdentity: Equatable {
   let key: String?
 
-  init(displayIdentifier: String, identity: ISSSpaceIdentity) {
-    let uuid = stringFromCStringBuffer(identity.uuid)
-    if let uuid = UUID(uuidString: uuid) {
+  init(displayIdentifier: String, record: SpaceRecord) {
+    if let uuid = UUID(uuidString: record.uuid) {
       key = "space:\(uuid.uuidString)"
-    } else if uuid.isEmpty && identity.isDefaultDesktop && !displayIdentifier.isEmpty {
+    } else if record.uuid.isEmpty && record.isDefaultDesktop && !displayIdentifier.isEmpty {
       key = "default:\(displayIdentifier.lowercased())"
     } else {
       key = nil
@@ -56,9 +54,8 @@ final class SpaceNameStore {
     return true
   }
 
-  func message(for event: ISSSwitchEvent) -> String {
-    let identity = SpaceIdentity(
-      displayIdentifier: stringFromCStringBuffer(event.display.displayID), identity: event.space)
-    return name(for: identity.key) ?? String(UInt64(event.targetIndex) + 1)
+  /// What the switch OSD says for a Space: its name, or its one-based number.
+  func message(forTargetIndex index: Int, identity: SpaceIdentity?) -> String {
+    name(for: identity?.key) ?? String(index + 1)
   }
 }

@@ -1,5 +1,4 @@
 import Foundation
-import ISS
 import XCTest
 @testable import InstantSpaceSwitcher
 
@@ -11,14 +10,14 @@ final class SpaceNamesTests: XCTestCase {
     ["id64": id, "uuid": uuid, "type": type]
   }
 
-  private func identity(_ spaces: [Any], index: UInt32 = 0) -> ISSSpaceIdentity {
-    var result = ISSSpaceIdentity()
-    XCTAssertTrue(iss_get_space_identity(spaces as CFArray, index, &result))
-    return result
+  private func record(_ spaces: [Any], index: Int = 0) -> SpaceRecord {
+    let records = SpaceCatalog.records(in: spaces)
+    XCTAssertTrue(records.indices.contains(index))
+    return records[index]
   }
 
-  private func key(_ spaces: [Any], index: UInt32 = 0, display: String = "monitor-a") -> String? {
-    SpaceIdentity(displayIdentifier: display, identity: identity(spaces, index: index)).key
+  private func key(_ spaces: [Any], index: Int = 0, display: String = "monitor-a") -> String? {
+    SpaceIdentity(displayIdentifier: display, record: record(spaces, index: index)).key
   }
 
   private func withStore(_ body: (SpaceNameStore, UserDefaults) -> Void) {
@@ -172,11 +171,7 @@ final class SpaceNamesTests: XCTestCase {
   func testMalformedEntriesDoNotShiftValidSpaceIndices() {
     let spaces: [Any] = ["invalid", ["uuid": personalUUID], ["id64": "invalid"],
       space(10, uuid: workUUID), NSNull(), space(20, uuid: personalUUID)]
-    XCTAssertEqual(identity(spaces).spaceID, 10)
-    XCTAssertEqual(identity(spaces, index: 1).spaceID, 20)
-    var result = ISSSpaceIdentity()
-    XCTAssertFalse(iss_get_space_identity(spaces as CFArray, 2, &result))
-    XCTAssertEqual(result.spaceID, 0)
+    XCTAssertEqual(SpaceCatalog.records(in: spaces).map(\.spaceID), [10, 20])
   }
 
   func testInvalidUUIDCannotBorrowDefaultDesktopName() {
@@ -196,13 +191,9 @@ final class SpaceNamesTests: XCTestCase {
       let spaces = [space(10, uuid: workUUID), space(20, uuid: personalUUID)]
       store.setName("Work", for: key(spaces)!)
       store.setName("Personal", for: key(spaces, index: 1)!)
-      var event = ISSSwitchEvent()
-      event.display.currentIndex = 0
-      event.targetIndex = 1
-      event.space = identity(spaces, index: 1)
-      XCTAssertEqual(store.message(for: event), "Personal")
-      event.space = ISSSpaceIdentity()
-      XCTAssertEqual(store.message(for: event), "2")
+      let personal = SpaceIdentity(displayIdentifier: "monitor-a", record: record(spaces, index: 1))
+      XCTAssertEqual(store.message(forTargetIndex: 1, identity: personal), "Personal")
+      XCTAssertEqual(store.message(forTargetIndex: 1, identity: nil), "2")
     }
   }
 
@@ -243,5 +234,41 @@ final class SpaceNamesTests: XCTestCase {
       let reconnected = SpaceCatalog.parse(raw, screenNames: [:], separateSpaces: true)
       XCTAssertEqual(SpaceNameStore(defaults: defaults).name(for: reconnected[0].spaces[0].identity.key), "Work")
     }
+  }
+
+  // MARK: - Which display a switch acts on (ISS's rule)
+
+  private func display(_ identifier: String, current: UInt64?) -> SpaceDisplay {
+    SpaceDisplay(
+      identifier: identifier, name: identifier,
+      spaces: SpaceCatalog.parse(
+        [["Display Identifier": identifier, "Spaces": [space(1), space(2, uuid: workUUID)]]],
+        screenNames: [:], separateSpaces: true)[0].spaces,
+      currentSpaceID: current)
+  }
+
+  func testSwitchingUsesTheDisplayWithTheCursorsUUID() {
+    let displays = [display("A", current: 1), display("B", current: 2)]
+    let picked = SpaceCatalog.select(displays, uuid: "B", screenID: 7)
+    XCTAssertEqual(picked?.display.identifier, "B")
+    XCTAssertEqual(picked?.currentIndex, 1)
+    XCTAssertEqual(picked?.screenID, 7)
+    XCTAssertEqual(picked?.matched, true)
+  }
+
+  func testAnUncatalogedDisplayFallsBackToTheFirstButIsMarkedSo() {
+    let picked = SpaceCatalog.select([display("A", current: 1), display("B", current: 2)], uuid: "C", screenID: 7)
+    XCTAssertEqual(picked?.display.identifier, "A")
+    XCTAssertEqual(picked?.matched, false)
+  }
+
+  func testADisplayWhoseCurrentSpaceIsMissingCannotBeUsed() {
+    XCTAssertNil(SpaceCatalog.select([display("A", current: 99)], uuid: "A", screenID: 7))
+    XCTAssertNil(SpaceCatalog.select([display("A", current: nil)], uuid: "A", screenID: 7))
+  }
+
+  func testCurrentSpaceIsReadFromID64() {
+    let raw: [[String: Any]] = [["Display Identifier": "A", "Spaces": [space(1), space(2)], "Current Space": ["id64": 2]]]
+    XCTAssertEqual(SpaceCatalog.parse(raw, screenNames: [:], separateSpaces: true)[0].currentSpaceID, 2)
   }
 }

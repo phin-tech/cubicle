@@ -2,11 +2,9 @@ import AppKit
 import ApplicationServices
 import ISS
 
-/// Moves the focused window to another Space on its display.
-///
-/// Spike: first asks the window server directly (works before macOS 14.5, or with SIP off), checks whether the
-/// window actually moved, then tries yabai's compat-ID workaround, and otherwise falls back to holding the window by its title bar while Cubicle switches
-/// Spaces, so the window is carried along.
+/// Moves a window to another Space on its display: by holding its title bar while the display switches, or by
+/// parking it on another display meanwhile. The window server's own move calls are ignored on macOS 27; see
+/// docs/moving-windows-between-spaces.md.
 @MainActor
 enum WindowMover {
   enum Method: String { case direct, compat, drag }
@@ -69,9 +67,8 @@ enum WindowMover {
   }
 
   private static func target(for window: AXUIElement) -> Target? {
-    var windowID: UInt32 = 0
     var pid: pid_t = 0
-    guard iss_window_id_for_ax_element(Unmanaged.passUnretained(window).toOpaque(), &windowID),
+    guard let windowID = WindowServer.windowID(of: window),
       AXUIElementGetPid(window, &pid) == .success,
       let frame = frame(of: window)
     else { return nil }
@@ -90,18 +87,6 @@ enum WindowMover {
     AXValueGetValue(positionValue as! AXValue, .cgPoint, &origin)
     AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
     return CGRect(origin: origin, size: size)
-  }
-
-  /// Tries the direct move; returns true if the window server reports the window on `spaceID` afterwards.
-  static func moveDirect(_ target: Target, spaceID: UInt64) -> Bool {
-    guard iss_move_window_to_space_direct(target.windowID, spaceID) else { return false }
-    return iss_space_for_window(target.windowID) == spaceID
-  }
-
-  /// Tries the compat-ID workaround; returns true if the window is on `spaceID` afterwards.
-  static func moveCompat(_ target: Target, spaceID: UInt64) -> Bool {
-    guard iss_move_window_to_space_compat(target.windowID, spaceID) else { return false }
-    return iss_space_for_window(target.windowID) == spaceID
   }
 
   /// Holds the window by its title bar and steps to the target with the system "Move left/right a space"
@@ -146,7 +131,7 @@ enum WindowMover {
       post(.leftMouseUp, at: grab)
       CGWarpMouseCursorPosition(savedCursor)
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-        let after = iss_space_for_window(target.windowID)
+        let after = WindowServer.space(ofWindow: target.windowID)
         lastDragReport = "\(switchReport); active before release=\(activeWhileHeld), active Space after=\(activeSpaceID()), window Space after=\(after)"
         completion(after == spaceID)
       }
@@ -174,7 +159,7 @@ enum WindowMover {
       return completion(false, "Staging display is too small: \(staging)")
     }
     let cursor = CGEvent(source: nil)?.location ?? .zero
-    let originalSpace = iss_space_for_window(target.windowID)
+    let originalSpace = WindowServer.space(ofWindow: target.windowID)
     func position(_ point: CGPoint) -> AXError {
       var point = point
       guard let value = AXValueCreate(.cgPoint, &point) else { return .failure }
@@ -230,7 +215,7 @@ enum WindowMover {
       return recover("Parking position rejected")
     }
     waitUntil({
-      let parkedSpace = iss_space_for_window(target.windowID)
+      let parkedSpace = WindowServer.space(ofWindow: target.windowID)
       return parkedSpace != 0 && parkedSpace != originalSpace
         && frame(of: target.window).map { staging.contains($0) } == true
     }) { parked in
@@ -245,7 +230,7 @@ enum WindowMover {
         mark("destination")
         guard switched else { return recover("Timed out switching to destination") }
         guard position(target.frame.origin) == .success else { return recover("Return position rejected") }
-        waitUntil({ iss_space_for_window(target.windowID) == spaceID && onSource() }) { returned in
+        waitUntil({ WindowServer.space(ofWindow: target.windowID) == spaceID && onSource() }) { returned in
           mark("window returned")
           guard returned else { return recover("Timed out returning window from staging") }
           // AX may acknowledge geometry before the app updates its display constraints.
@@ -261,10 +246,10 @@ enum WindowMover {
             return false
           }) { restored in
             mark("geometry")
-            let report = "geometry restored=\(restored), window Space=\(iss_space_for_window(target.windowID))"
+            let report = "geometry restored=\(restored), window Space=\(WindowServer.space(ofWindow: target.windowID))"
               + (restored ? "" : "\nWarning: original frame \(target.frame); actual \(String(describing: frame(of: target.window))).")
-            guard let returnToIndex, iss_space_for_window(target.windowID) == spaceID else {
-              return finish(iss_space_for_window(target.windowID) == spaceID, report)
+            guard let returnToIndex, WindowServer.space(ofWindow: target.windowID) == spaceID else {
+              return finish(WindowServer.space(ofWindow: target.windowID) == spaceID, report)
             }
             CGWarpMouseCursorPosition(anchor)
             let posted = iss_switch_to_index(UInt32(returnToIndex))
@@ -272,7 +257,7 @@ enum WindowMover {
               CGWarpMouseCursorPosition(anchor)
               return activeSpaceID() == originalSpace
             }) { stayed in
-              let finalSpace = iss_space_for_window(target.windowID)
+              let finalSpace = WindowServer.space(ofWindow: target.windowID)
               finish(finalSpace == spaceID,
                 report + "\nReturn to starting Space=\(posted && stayed), window Space=\(finalSpace)")
             }
@@ -308,12 +293,9 @@ enum WindowMover {
 
   static var lastDragReport = ""
 
+  /// The Space showing on the display under the cursor.
   static func activeSpaceID() -> UInt64 {
-    var info = ISSSpaceInfo()
-    guard iss_get_space_info(&info) else { return 0 }
-    let displayID = stringFromCStringBuffer(info.displayID)
-    SpaceCatalog.shared.refresh()
-    return SpaceCatalog.shared.displays.first { $0.identifier == displayID }?.currentSpaceID ?? 0
+    SpaceCatalog.shared.spacesUnderCursor()?.display.currentSpaceID ?? 0
   }
 
   private static func post(_ type: CGEventType, at point: CGPoint) {
@@ -367,17 +349,17 @@ enum VirtualDisplaySession {
 
   private static func scheduleCleanup() {
     cancelCleanup()
-    let display = iss_virtual_display_id()
+    let display = VirtualDisplay.id
     guard automaticShutdown, !moving, display != 0 else { return }
     let token = generation
     let work = DispatchWorkItem {
-      guard token == generation, !moving, iss_virtual_display_id() == display else { return }
+      guard token == generation, !moving, VirtualDisplay.id == display else { return }
       let bounds = CGDisplayBounds(display)
       // Keep the display attached if recovery left a window there or its location is unknown.
       for target in protectedWindows.values {
         guard let frame = WindowMover.frame(of: target.window), !bounds.intersects(frame) else { return }
       }
-      iss_remove_virtual_display()
+      VirtualDisplay.remove()
       protectedWindows.removeAll()
       cleanup = nil
     }
