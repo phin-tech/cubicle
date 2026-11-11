@@ -52,6 +52,43 @@ other apps' minimum window sizes, display layouts, closed windows, and recovery 
 cleanup checks tracked windows only: unrelated windows placed on staging are not protected by that
 check. Connection prompts and display-layout effects need broader testing.
 
+## Window handles across Spaces (2026-11-11)
+
+Tested on macOS 27, SIP on, with Finder, Calculator (AppKit) and Obsidian (Electron), staging through a real
+second display and through a virtual display made the same way as `VirtualDisplay`.
+
+- An Accessibility window element obtained while the window's Space was current keeps working after switching
+  away. The app's `AXWindows` list no longer includes the window, but reading and setting position through the
+  cached element succeeds, and the window moves on its own Space without a switch (checked with
+  `CGWindowListCopyWindowInfo` and `SLSCopySpacesForWindows`).
+- Setting its position onto another display moves it to that display's current Space; setting it back onto the
+  original display puts it on that display's *current* Space, not the one it came from. Neither step switches
+  Spaces. Measured 25–80 ms to park and 20–50 ms to come back, for both the real and the virtual display.
+- So a window on any Space can be brought to the Space you are looking at with no visible switch at all, given a
+  cached handle. Putting it on a Space you are *not* looking at still means switching that display there.
+- The cached handle still reads and moves the window while its app is hidden, and minimize and unminimize work
+  through it; unminimizing leaves the window on its own Space without switching you to it.
+- Large windows must be shrunk to fit the staging display first (as `moveViaDisplay` does). Obsidian accepted the
+  moves but ignored the immediate size restore afterwards (height stayed clamped to the staging display), so
+  restoring the size needs a retry after the window lands.
+- Cubicle cannot discover windows on a Space it has never seen; handles must be collected while their Space is
+  current. Handle lifetime across sleep or app relaunch is untested (a relaunch makes new windows anyway).
+
+### Finding windows on Spaces Cubicle never saw
+
+AltTab's trick works on macOS 27: `_AXUIElementCreateWithRemoteToken` with a 20-byte token (pid, 4 zero bytes,
+`0x636f636f`, then a 64-bit element ID) returns an element for each ID an app has handed out, and walking IDs 0–1000
+finds windows on other Spaces in 15–45 ms per app. A survey of the windows on Spaces not being viewed resolved
+4 of 5 (Brave, Finder ×2, Slack; not Phin Tech Store, even searching 100,000 IDs). A fresh process with no
+cached handle resolved a Calculator window on another Space this way and pulled it onto the current Space.
+
+The catch: an app only creates the element for a window once some client asks for it. A just-launched
+Calculator had no window element at all (only its application and menu bar) until something read its
+`AXWindows`. From another Space `AXWindows` is empty, but `AXMainWindow` and `AXFocusedWindow` still return the
+off-Space window (and create its element). So after a restart, each app's main window can be reached without
+visiting its Space; other windows of a multi-window app may only be reachable once some client has asked for
+them, which in practice other Accessibility tools often have. Untested: how many windows that leaves out.
+
 ## Historical spike notes
 
 Earlier dimensions, delays, and unverified-result notes below record the progression of experiments;
