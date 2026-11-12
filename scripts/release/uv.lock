@@ -27,7 +27,7 @@ wheels = [
 [[package]]
 name = "app-release"
 version = "1.10.2"
-source = { git = "https://git.phin.tech/sam/app-release?tag=v1.10.2#6052938fc71a324b05b52d616506e59bbc2a927d" }
+source = { git = "https://git.phin.tech/sam/app-release?tag=v1.10.2#5a60ea8c7d10368dd6d6d186c60a3ab1495f72fa" }
 dependencies = [
     { name = "bump-my-version" },
     { name = "cyclopts" },
