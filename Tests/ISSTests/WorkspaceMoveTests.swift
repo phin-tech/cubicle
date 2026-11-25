@@ -51,4 +51,23 @@ final class WorkspaceMoveTests: XCTestCase {
       XCTAssertEqual(there.filter { $0.bundleID == "com.apple.Mail" }.count, 1)
     }
   }
+
+  // MARK: - Which workspace a binding points at
+
+  private let screens = [
+    VirtualWorkspaces.Screen(uuid: "AAAA-1111", id: 1, name: "Built-in", bounds: .zero),
+    VirtualWorkspaces.Screen(uuid: "BBBB-2222", id: 2, name: "Studio", bounds: .zero),
+  ]
+
+  func testABindingKeyNamesItsDisplayAndWorkspace() {
+    let home = VirtualWorkspaces.workspace(forKey: VirtualWorkspaces.key("BBBB-2222", 2), on: screens, count: 9)
+    XCTAssertEqual(home?.display, "BBBB-2222")
+    XCTAssertEqual(home?.index, 2)
+  }
+
+  func testABindingOnADisconnectedDisplayOrAMissingWorkspacePointsNowhere() {
+    XCTAssertNil(VirtualWorkspaces.workspace(forKey: "workspace:cccc-3333:1", on: screens, count: 9))
+    XCTAssertNil(VirtualWorkspaces.workspace(forKey: "workspace:aaaa-1111:12", on: screens, count: 9))
+    XCTAssertNil(VirtualWorkspaces.workspace(forKey: "space:AAAA", on: screens, count: 9))
+  }
 }

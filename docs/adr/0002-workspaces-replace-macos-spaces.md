@@ -14,4 +14,4 @@ The trade-offs:
 
 To avoid a flash, a switch puts every incoming window back, waits for them all, and only then parks the outgoing ones, as AeroSpace (issue #1305) and Tessel (issue #33) do.
 
-This supersedes [0001](0001-zones-never-pull-windows-across-spaces.md). Its reason for never pulling windows across Spaces automatically, that every move was slow and visible, no longer holds. Whether a binding should now gather its app's windows onto its workspace is an open question.
+This supersedes [0001](0001-zones-never-pull-windows-across-spaces.md). Its reason for never pulling windows across Spaces automatically, that every move was slow and visible, no longer holds. [0003](0003-bindings-gather-new-windows.md) decides that bindings now gather their app's new windows.

@@ -64,6 +64,8 @@ final class VirtualWorkspaces {
   /// Displays in the order first seen, so each workspace's fake Space ID stays put while Cubicle runs.
   private var displayOrder: [String] = []
   private var switching = false
+  /// Off while launch adopts the windows that already exist, so starting Cubicle doesn't rearrange them.
+  private var gathering = false
   private var activationObserver: Any?
 
   // MARK: - Starting and stopping
@@ -86,6 +88,7 @@ final class VirtualWorkspaces {
     let showing = members.filter { $0.value.workspace == activeIndex($0.value.display) }.map(\.key)
     move(park: members.keys.filter { !showing.contains($0) }, unpark: showing)
     save()
+    gathering = true
     activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
     ) { notification in
@@ -485,6 +488,7 @@ final class VirtualWorkspaces {
     let screens = Self.screens()
     var seen = Set<UInt32>()
     var strayed: [UInt32] = []
+    var adopted: [UInt32] = []
     for window in currentWindows() {
       seen.insert(window.id)
       if var member = members[window.id] {
@@ -504,9 +508,11 @@ final class VirtualWorkspaces {
       else { continue }
       members[window.id] = Member(
         element: window.element, pid: window.pid, display: screen.uuid, workspace: activeIndex(screen.uuid))
+      adopted.append(window.id)
     }
     members = members.filter { seen.contains($0.key) }
     move(park: strayed, unpark: [])
+    if gathering { gather(adopted, screens: screens) }
     // A display that went away: its windows join the main display's workspaces.
     if let main = screens.first {
       let known = Set(screens.map(\.uuid))
@@ -514,6 +520,61 @@ final class VirtualWorkspaces {
         members[id]?.display = main.uuid
       }
     }
+  }
+
+  /// New windows of an app bound to a workspace go to that workspace, on whichever display it is, and are parked
+  /// if it isn't showing. A window already on one of its app's bound workspaces stays; otherwise the first binding
+  /// wins. Ignored apps, workspaces with stacking paused, and apps with window bindings (which pick out single
+  /// windows Cubicle could misjudge here) are left alone. If you're looking at the window, you go with it.
+  private func gather(_ ids: [UInt32], screens: [Screen]) {
+    let store = StackingStore.shared
+    var parking: [UInt32] = []
+    var showing: [UInt32] = []
+    for id in ids {
+      guard var member = members[id],
+        let bundleID = NSRunningApplication(processIdentifier: member.pid)?.bundleIdentifier,
+        !store.isIgnored(bundleID)
+      else { continue }
+      let bindings = store.settings.bindings.filter { $0.bundleID == bundleID }
+      guard !bindings.isEmpty, !bindings.contains(where: \.isWindowBinding) else { continue }
+      let homes = bindings.compactMap { Self.workspace(forKey: $0.spaceKey, on: screens, count: count) }
+      guard let home = homes.first,
+        !homes.contains(where: { $0.display == member.display && $0.index == member.workspace }),
+        !store.isPaused(Self.key(home.display, home.index)),
+        let frame = WindowMover.frame(of: member.element)
+      else { continue }
+      if home.display != member.display,
+        let from = screens.first(where: { $0.uuid == member.display }),
+        let to = screens.first(where: { $0.uuid == home.display })
+      {
+        member.parkedFrame = Self.translate(
+          frame, from: WindowSnapper.visibleFrame(containing: from.bounds) ?? from.bounds,
+          to: WindowSnapper.visibleFrame(containing: to.bounds) ?? to.bounds)
+      } else {
+        member.parkedFrame = frame
+      }
+      member.display = home.display
+      member.workspace = home.index
+      members[id] = member
+      if home.index == activeIndex(home.display) { showing.append(id) } else { parking.append(id) }
+    }
+    guard !parking.isEmpty || !showing.isEmpty else { return }
+    move(park: parking, unpark: showing)
+    save()
+    NotificationCenter.default.post(name: .virtualWorkspaceDidChange, object: nil)
+    // Outside this pass, which may be part of a switch.
+    DispatchQueue.main.async { [weak self] in self?.followFocus(NSWorkspace.shared.frontmostApplication) }
+  }
+
+  /// The display and workspace a name key stands for, if that display is connected.
+  nonisolated static func workspace(forKey key: String, on screens: [Screen], count: Int)
+    -> (display: String, index: Int)?
+  {
+    let parts = key.split(separator: ":")
+    guard parts.count == 3, parts[0] == "workspace", let number = Int(parts[2]), (1...count).contains(number),
+      let screen = screens.first(where: { $0.uuid.lowercased() == parts[1] })
+    else { return nil }
+    return (screen.uuid, number - 1)
   }
 
   private func currentWindows() -> [LiveWindow] {

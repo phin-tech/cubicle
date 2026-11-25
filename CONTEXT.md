@@ -61,7 +61,7 @@ A window that is not in any **Zone**: it was never snapped and its app has no **
 A window of a bound app that the user took out of its **Stack**, by moving or resizing it by hand (it becomes a **Floating window**) or by snapping it to another zone (it joins that zone's stack until it closes or is moved by hand, without changing any **Binding**).
 
 **Binding**:
-A saved rule that places an app's windows, or one particular window, on a particular workspace, optionally in a **Zone** (joining its **Stack**). An app has at most one app binding per workspace; binding it again moves it to the new zone. The same app may be bound on several workspaces. A window binding wins over its app's binding. A window binding recognises its window again after the app restarts by the window's document, else its title, else its place in the app's window order.
+A saved rule that places an app's windows, or one particular window, on a particular workspace, optionally in a **Zone** (joining its **Stack**). A new window of a bound app goes to its workspace, wherever it opened. An app has at most one app binding per workspace; binding it again moves it to the new zone. The same app may be bound on several workspaces. A window binding wins over its app's binding. A window binding recognises its window again after the app restarts by the window's document, else its title, else its place in the app's window order.
 _Avoid_: home, assignment, pin
 
 **Ignored app**:
