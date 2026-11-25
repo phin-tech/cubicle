@@ -65,7 +65,7 @@ enum WindowSnapper {
     if FullScreen.shared.contains(window.windowID) {
       let action = action == .fullScreen ? SnapAction.restore : action
       if FullScreen.shared.leave(window.windowID) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { snap(action, window) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { _ = snap(action, window) }
         return Outcome(ok: true, message: action == .restore ? "\(name) left full screen." : "\(action.displayName): \(name).")
       }
       if action == .restore { return snap(action, window) }
