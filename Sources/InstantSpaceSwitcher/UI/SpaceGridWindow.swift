@@ -330,6 +330,9 @@ final class SpaceGridCellsView: NSView {
   private var query = ""
   private var matchIndices: [Int]
   private let headerHeight: CGFloat = 30
+  /// The line of editing shortcuts under the cells.
+  private let footerHeight: CGFloat = 26
+  private let minimumWidth: CGFloat = 440
   private let padding: CGFloat = 20
   private let gap: CGFloat = 12
   private let cellSize = NSSize(width: 150, height: 90)
@@ -362,8 +365,9 @@ final class SpaceGridCellsView: NSView {
   func preferredSize(maximum: NSSize) -> NSSize {
     let columns = CGFloat(SpaceGridLayout.columns(for: cells.count))
     let rows = CGFloat(SpaceGridLayout.rows(for: cells.count))
-    let width = 2 * padding + columns * cellSize.width + (columns - 1) * gap
-    let height = 2 * padding + headerHeight + rows * cellSize.height + (rows - 1) * gap
+    // Wide enough for the hints even with only a couple of workspaces.
+    let width = max(2 * padding + columns * cellSize.width + (columns - 1) * gap, minimumWidth)
+    let height = 2 * padding + headerHeight + rows * cellSize.height + (rows - 1) * gap + footerHeight
     return NSSize(width: min(width, maximum.width), height: min(height, maximum.height))
   }
 
@@ -371,8 +375,10 @@ final class SpaceGridCellsView: NSView {
     let columns = SpaceGridLayout.columns(for: cells.count)
     let column = index % columns
     let row = index / columns
+    let cellsWidth = CGFloat(columns) * cellSize.width + CGFloat(columns - 1) * gap
+    let left = max(padding, (bounds.width - cellsWidth) / 2)
     return NSRect(
-      x: padding + CGFloat(column) * (cellSize.width + gap),
+      x: left + CGFloat(column) * (cellSize.width + gap),
       y: padding + headerHeight + CGFloat(row) * (cellSize.height + gap),
       width: cellSize.width, height: cellSize.height)
   }
@@ -387,6 +393,7 @@ final class SpaceGridCellsView: NSView {
     paragraph.lineBreakMode = .byTruncatingTail
 
     drawHeader()
+    drawFooter()
 
     for cell in cells {
       let frame = rect(for: cell.index)
@@ -427,15 +434,15 @@ final class SpaceGridCellsView: NSView {
   private func drawHeader() {
     let text: String
     if let removing {
-      text = "Remove “\(cells[removing].title)”? Press ⌃⌫ again. Its windows join the one before it."
+      text = "Remove “\(cells[removing].title)”?"
     } else if renaming != nil {
-      text = "Rename workspace \(selected + 1)  ·  ↩ saves  ·  esc cancels  ·  empty clears"
+      text = "Rename workspace \(selected + 1)"
     } else if !query.isEmpty {
       text = "Search: \(query)"
     } else if let sendingName {
       text = "Send “\(sendingName)” to…"
     } else {
-      text = "Type to search  ·  1–9 jump  ·  ⇧↩ sends the window  ·  ⌃R rename  ·  ⌃N add  ·  ⌃⌫ remove"
+      text = "Type to search  ·  1–9 to jump  ·  ⇧↩ sends the window"
     }
     let paragraph = NSMutableParagraphStyle()
     paragraph.lineBreakMode = .byTruncatingTail
@@ -447,6 +454,31 @@ final class SpaceGridCellsView: NSView {
     ]
     NSAttributedString(string: text, attributes: attributes)
       .draw(in: NSRect(x: padding, y: padding - 6, width: bounds.width - 2 * padding, height: headerHeight))
+  }
+
+  private func drawFooter() {
+    let hint: String
+    if removing != nil {
+      hint = "⌃⌫ again removes it; its windows join the one before"
+    } else if renaming != nil {
+      hint = "↩ save  ·  esc cancel  ·  empty goes back to the number"
+    } else if !sendMode {
+      hint = "⌃R rename  ·  ⌃N add  ·  ⌃⌫ remove"
+    } else {
+      return
+    }
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = .center
+    paragraph.lineBreakMode = .byTruncatingTail
+    let attributes: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 12, weight: .regular),
+      .foregroundColor: NSColor.white.withAlphaComponent(removing != nil || renaming != nil ? 0.75 : 0.4),
+      .paragraphStyle: paragraph,
+    ]
+    NSAttributedString(string: hint, attributes: attributes)
+      .draw(in: NSRect(
+        x: padding, y: bounds.height - padding - footerHeight + 10, width: bounds.width - 2 * padding,
+        height: footerHeight - 6))
   }
 
   private func setQuery(_ newQuery: String) {
