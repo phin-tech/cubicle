@@ -5,7 +5,12 @@ bundle_id = "tech.phin.Cubicle"
 repo = "phin-tech/cubicle"
 description = "Instant, named, searchable Spaces for macOS"
 team_id = "J35P7AJDN7"
-op_item = "op://Development/lc6wrq7lltjd47uue26cdxttzu"
+
+# Signing and notarizing secrets: the phin-tech-store project in Infisical (`infisical login`), as the store's apps use.
+[secrets]
+provider = "infisical"
+project = "ab5ef8f1-af05-4d58-875d-f0e28832d026"
+environment = "prod"
 
 [homebrew]
 tap = "phin-tech/homebrew-tap"
