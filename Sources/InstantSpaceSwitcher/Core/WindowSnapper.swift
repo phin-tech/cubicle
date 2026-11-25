@@ -217,8 +217,8 @@ enum WindowSnapper {
     var message: String {
       switch self {
       case .noApp(let name): return "No running app matches '\(name)'."
-      case .noWindow(let name): return "\(name) has no window on this Space."
-      case .unknownWindow(let id): return "No window \(id) on this Space. `cubicle windows` lists them."
+      case .noWindow(let name): return "\(name) has no window on this workspace."
+      case .unknownWindow(let id): return "No window \(id) on this workspace. `cubicle windows` lists them."
       case .noPrevious: return "There is no previous app yet."
       }
     }

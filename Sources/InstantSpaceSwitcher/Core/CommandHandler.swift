@@ -147,13 +147,13 @@ enum CommandHandler {
   private static func bind(_ request: CubicleRequest) -> CubicleResponse {
     let name = (request.argument ?? "").trimmingCharacters(in: .whitespaces).lowercased()
     let zone: Zone?
-    if name == "space" || name == "none" {
+    if name == "space" || name == "workspace" || name == "none" {
       zone = nil
     } else if let named = Zone(name: name) {
       zone = named
     } else {
       let names = Zone.allCases.map(\.rawValue).joined(separator: ", ")
-      return CubicleResponse(ok: false, message: "Unknown zone '\(name)'. Use one of: \(names), or space.")
+      return CubicleResponse(ok: false, message: "Unknown zone '\(name)'. Use one of: \(names), or workspace.")
     }
     return reply(StackManager.shared.bind(zone, window: request.command == "bind-window", selector(for: request)))
   }
@@ -186,7 +186,7 @@ enum CommandHandler {
   private static func step(_ direction: SwitchDirection) -> CubicleResponse {
     VirtualWorkspaces.shared.stepUnderCursor(direction)
       ? CubicleResponse(ok: true)
-      : CubicleResponse(ok: false, message: "No Space in that direction (or Accessibility is not granted to Cubicle).")
+      : CubicleResponse(ok: false, message: "No workspace in that direction (or Accessibility is not granted to Cubicle).")
   }
 
   /// Switches on the display under the cursor, the same display the grid and hotkeys act on.
@@ -194,7 +194,7 @@ enum CommandHandler {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return CubicleResponse(ok: false, message: "Usage: cubicle go <name|number>") }
     guard let spaces = SpaceCatalog.shared.spacesUnderCursor() else {
-      return CubicleResponse(ok: false, message: "Could not read the Spaces on the current display.")
+      return CubicleResponse(ok: false, message: "Could not read the workspaces on the current display.")
     }
 
     let cells = SpaceGridWindow.cells(for: spaces)
@@ -202,13 +202,13 @@ enum CommandHandler {
     var alternatives: [String] = []
     if let number = Int(trimmed) {
       guard (1...cells.count).contains(number) else {
-        return CubicleResponse(ok: false, message: "There is no Space \(number); this display has \(cells.count).")
+        return CubicleResponse(ok: false, message: "There is no workspace \(number); this display has \(cells.count).")
       }
       target = number - 1
     } else {
       let hits = SpaceGridLayout.matches(in: cells, query: trimmed)
       guard let best = SpaceGridLayout.bestMatch(in: cells, query: trimmed, among: hits) else {
-        return CubicleResponse(ok: false, message: "No Space matches '\(trimmed)'.")
+        return CubicleResponse(ok: false, message: "No workspace matches '\(trimmed)'.")
       }
       target = best
       alternatives = hits.filter { $0 != best }.map { cells[$0].title }

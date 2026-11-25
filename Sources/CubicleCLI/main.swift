@@ -26,10 +26,10 @@ let usage = """
                         none (default), black, freeze or black-freeze
 
   Stacking (snapping to a zone also puts the window in that zone's stack):
-    bind <zone|space> [--app <name>|--window <id>|--previous]
+    bind <zone|workspace> [--app <name>|--window <id>|--previous]
                         Bind the window's app on its workspace to a zone (left-half ... bottom-right, full), or
                         to the workspace only. Its windows, now and later, stack in that zone there.
-    bind-window <zone|space> [...]
+    bind-window <zone|workspace> [...]
                         Bind just this window; it wins over its app's binding
     unbind | unbind-window [...]
                         Remove the app's (or the window's) binding on the window's workspace
@@ -144,7 +144,7 @@ func printJSON<T: Encodable>(_ value: T) {
 
 func printWindows(_ windows: [CubicleWindowEntry]) {
   guard !windows.isEmpty else {
-    print("No windows on this Space.")
+    print("No windows on this workspace.")
     return
   }
   let width = windows.map { String($0.id).count }.max() ?? 1
@@ -193,11 +193,11 @@ func alfredItems(for response: CubicleResponse) -> [AlfredItem] {
   // No uid on purpose: Alfred would re-rank by past use and bury our best-match-first order.
   let items = spaces.filter { !$0.isCurrent }.map {
     AlfredItem(
-      title: $0.name ?? "Space \($0.index)", subtitle: "\($0.display) · Space \($0.index)",
+      title: $0.name ?? "Workspace \($0.index)", subtitle: "\($0.display) · Workspace \($0.index)",
       arg: String($0.index), valid: true)
   }
   return items.isEmpty
-    ? [AlfredItem(title: "No other Spaces match", subtitle: "Nothing to switch to on this display", arg: nil, valid: false)]
+    ? [AlfredItem(title: "No other workspaces match", subtitle: "Nothing to switch to on this display", arg: nil, valid: false)]
     : items
 }
 
@@ -328,7 +328,7 @@ case "switch-style":
 case "bind", "bind-window":
   let target = windowTarget(rest)
   guard let name = target.rest.first, target.rest.count == 1 else {
-    fail("Usage: cubicle \(command) <zone|space> [--app <name>|--window <id>|--previous]\nZones: "
+    fail("Usage: cubicle \(command) <zone|workspace> [--app <name>|--window <id>|--previous]\nZones: "
       + Zone.allCases.map(\.rawValue).joined(separator: ", "))
   }
   report(send(CubicleRequest(

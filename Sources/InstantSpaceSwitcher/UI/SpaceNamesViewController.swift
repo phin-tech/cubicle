@@ -43,7 +43,7 @@ final class SpaceNamesViewController: NSViewController, NSTextFieldDelegate {
   override func loadView() {
     view = NSView(frame: NSRect(x: 0, y: 0, width: 550, height: 350))
     let description = NSTextField(wrappingLabelWithString:
-      "Names appear when switching spaces and in the Spaces menu. Leave a name empty to show its number. "
+      "Names appear when switching workspaces and in the Workspaces menu. Leave a name empty to show its number. "
       + "Maximum \(SpaceNameStore.maximumNameLength) characters per name, including spaces.")
     description.textColor = .secondaryLabelColor
     description.translatesAutoresizingMaskIntoConstraints = false
@@ -59,7 +59,7 @@ final class SpaceNamesViewController: NSViewController, NSTextFieldDelegate {
     stack.translatesAutoresizingMaskIntoConstraints = false
     scroll.documentView = stack
 
-    let refresh = NSButton(title: "Refresh Spaces", target: self, action: #selector(refreshSpaces))
+    let refresh = NSButton(title: "Refresh", target: self, action: #selector(refreshSpaces))
     refresh.translatesAutoresizingMaskIntoConstraints = false
     view.addSubview(description)
     view.addSubview(scroll)
@@ -102,23 +102,23 @@ final class SpaceNamesViewController: NSViewController, NSTextFieldDelegate {
       item.removeFromSuperview()
     }
     if displays.isEmpty {
-      stack.addArrangedSubview(NSTextField(labelWithString: "No accessible spaces. Try refreshing."))
+      stack.addArrangedSubview(NSTextField(labelWithString: "No workspaces. Try refreshing."))
     }
     for display in displays {
       let heading = NSTextField(labelWithString: display.name)
       heading.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
       stack.addArrangedSubview(heading)
       for space in display.spaces {
-        let label = NSTextField(labelWithString: "Space \(space.index + 1)")
+        let label = NSTextField(labelWithString: "Workspace \(space.index + 1)")
         label.widthAnchor.constraint(equalToConstant: 80).isActive = true
         let field = SpaceNameField(string: store.name(for: space.identity.key) ?? "")
         field.spaceKey = space.identity.key
         field.delegate = self
         field.formatter = SpaceNameFormatter()
         field.isEnabled = space.identity.key != nil
-        field.placeholderString = field.isEnabled ? "Space \(space.index + 1)" : "Name unavailable for this space"
+        field.placeholderString = field.isEnabled ? "Workspace \(space.index + 1)" : "Name unavailable for this workspace"
         field.usesSingleLineMode = true
-        field.setAccessibilityLabel("\(display.name), Space \(space.index + 1) name")
+        field.setAccessibilityLabel("\(display.name), workspace \(space.index + 1) name")
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let row = NSStackView(views: [label, field])
         row.distribution = .fill

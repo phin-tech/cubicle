@@ -86,12 +86,11 @@ struct OnboardingView: View {
 
   private var welcome: some View {
     VStack(alignment: .leading, spacing: 14) {
-      Text("Spaces, without the wait.")
+      Text("Workspaces, without the wait.")
         .font(.title3.bold())
       Text(
-        "macOS lets you keep separate desktops, called Spaces, but switching between them is slow and you can't tell "
-          + "them apart. Cubicle makes switching instant, lets you name your Spaces, and gives you a grid you can "
-          + "search by typing.")
+        "Cubicle gives every display its own workspaces: separate desktops, each with its own windows. Switching is "
+          + "instant, you can name them, and a grid lets you jump to one by typing its name.")
       Text("This takes about a minute. You can skip any step, and reopen this from the menu bar icon.")
         .foregroundStyle(.secondary)
     }
@@ -173,7 +172,7 @@ struct OnboardingView: View {
             }
           }
         }
-        Text("Try Main, Code, Mail. You can change these any time in Settings > Spaces.")
+        Text("Try Main, Code, Mail. You can change these any time in Settings > Workspaces.")
           .font(.callout)
           .foregroundStyle(.secondary)
       }
@@ -185,7 +184,7 @@ struct OnboardingView: View {
       Text("Press \(model.gridShortcut) any time to open the grid.")
         .font(.title3.bold())
       Text("Arrow keys move, Return jumps, and Esc closes. Or just start typing a name: \"ino\" finds \"Innopts\", "
-        + "and the Space you're already on is left out.")
+        + "and the workspace you're already on is left out.")
       Button("Try it now") { model.openGrid() }
         .buttonStyle(.borderedProminent)
       Divider()
@@ -196,14 +195,14 @@ struct OnboardingView: View {
           .foregroundStyle(.orange)
       }
       shortcutRow("Open the grid", .showGrid)
-      shortcutRow("Move one Space left", .left)
-      shortcutRow("Move one Space right", .right)
+      shortcutRow("Move one workspace left", .left)
+      shortcutRow("Move one workspace right", .right)
       Toggle(
         "Window shortcuts: ⌃⌥ + arrows for halves, U I J K for quarters, ↩ maximize, C center, ⌫ restore, "
           + "] and [ to cycle a stack, ⇧ arrows to swap stacks",
         isOn: Binding(get: { model.snapShortcutsEnabled }, set: { model.setSnapShortcutsEnabled($0) }))
       Text("Click a box, then press the keys you want. Esc cancels. Every shortcut, including jumping straight to "
-        + "Space 1 to 16, is in Settings > Keyboard.")
+        + "workspace 1 to 16, is in Settings > Keyboard.")
         .font(.callout)
         .foregroundStyle(.secondary)
       if let notice = model.shortcutNotice {
@@ -217,7 +216,7 @@ struct OnboardingView: View {
       GroupBox {
         VStack(alignment: .leading, spacing: 8) {
           Text("The cubicle command").font(.headline)
-          Text("Switch Spaces from a terminal or a script: cubicle go code, cubicle list, cubicle left.")
+          Text("Switch workspaces from a terminal or a script: cubicle go code, cubicle list, cubicle left.")
             .font(.callout)
           HStack {
             Button(cliButtonTitle) { model.toggleCLI() }
@@ -234,7 +233,7 @@ struct OnboardingView: View {
         GroupBox {
           VStack(alignment: .leading, spacing: 8) {
             Text("Alfred").font(.headline)
-            Text("Type @ and part of a Space's name in Alfred to jump to it. Needs the Alfred Powerpack.")
+            Text("Type @ and part of a workspace's name in Alfred to jump to it. Needs the Alfred Powerpack.")
               .font(.callout)
             Button("Add the workflow to Alfred") { model.openAlfredWorkflow() }
           }
@@ -252,10 +251,10 @@ struct OnboardingView: View {
     VStack(alignment: .leading, spacing: 14) {
       Text("Cubicle lives in your menu bar.")
         .font(.title3.bold())
-      Text("Click its icon for the menu. It shows the current Space's number, and its name if you gave it one.")
+      Text("Click its icon for the menu. It shows the current workspace's number, and its name if you gave it one.")
       VStack(alignment: .leading, spacing: 6) {
         Label("\(model.gridShortcut)  opens the grid", systemImage: "square.grid.2x2")
-        Label("Settings > Spaces  names your Spaces", systemImage: "textformat")
+        Label("Settings > Workspaces  names your workspaces", systemImage: "textformat")
         Label("Welcome to Cubicle…  in the menu reopens this", systemImage: "questionmark.circle")
       }
     }

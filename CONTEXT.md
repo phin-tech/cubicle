@@ -73,4 +73,4 @@ A workspace whose **Layout** is kept but ignored: nothing is placed automaticall
 ## Flagged ambiguities
 
 - "Full screen" was used to mean **Maximize**. Resolved: Cubicle never enters native full screen.
-- "Space" meant a macOS Space until Cubicle replaced them with **Workspaces**. Resolved: say workspace; the code's `Space*` type names and the Settings > Spaces tab still mean workspaces.
+- "Space" meant a macOS Space until Cubicle replaced them with **Workspaces**. Resolved: say workspace; the code's `Space*` type names still mean workspaces.

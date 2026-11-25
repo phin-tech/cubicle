@@ -8,7 +8,7 @@ Cubicle began as a fork of [InstantSpaceSwitcher](https://github.com/jurplel/Ins
 
 - **Workspace grid** (default Ctrl+Option+Cmd+Space): a grid of the workspaces on the display under your cursor, with arrow-key, number-key and click navigation.
 - **Search by name**: type to filter. Matching is fuzzy ("ino" finds "innopts") and ignores the workspace you are already on.
-- **Custom names**: Settings > Spaces.
+- **Custom names**: Settings > Workspaces.
 - **Send a window** to another workspace from the grid (⇧Return), the ⌃⌥⌘-click window menu, or `cubicle send`.
 - **Window snapping**: halves, quarters, Maximize, Center and Restore, Rectangle-style. The shortcuts are Rectangle's (⌃⌥ + arrows, U/I/J/K, ↩, C, ⌫) and are off until you turn them on in Settings > Keyboard Shortcuts. Also in the ⌃⌥⌘-click window menu, `cubicle snap`, and Alfred's `w` keyword. Settings > General has a gap setting.
 - **`cubicle` CLI**: `cubicle list [--here] [query]`, `cubicle go <name|number>`, `cubicle send <name|number>`, `cubicle left|right`, `cubicle new-space`, `cubicle grid`, `cubicle snap <action> [--app <name>|--window <id>|--previous]`, `cubicle windows [--json]`, `cubicle actions`, `cubicle gap [points]`. It talks to the running app over a private local socket, so it needs no Accessibility permission of its own, and it starts Cubicle if it is not running.

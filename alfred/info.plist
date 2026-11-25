@@ -36,7 +36,7 @@
 	<key>createdby</key>
 	<string>Sam</string>
 	<key>description</key>
-	<string>Jump to a Space by name and snap windows with Cubicle</string>
+	<string>Jump to a workspace by name and snap windows with Cubicle</string>
 	<key>disabled</key>
 	<false/>
 	<key>name</key>
@@ -83,9 +83,9 @@ exec "$CUBICLE" list --alfred "$1"</string>
 				<key>scriptfile</key>
 				<string></string>
 				<key>subtext</key>
-				<string>Fuzzy-search the Spaces on this display</string>
+				<string>Fuzzy-search the workspaces on this display</string>
 				<key>title</key>
-				<string>Cubicle: go to Space</string>
+				<string>Cubicle: go to workspace</string>
 				<key>type</key>
 				<integer>0</integer>
 				<key>withspace</key>
@@ -206,7 +206,7 @@ exec "$CUBICLE" $1</string>
 		</dict>
 	</array>
 	<key>readme</key>
-	<string>Type "@" and part of a Space's name to jump to it (for example @ino). Matching is fuzzy (ino finds innopts) and lists only the Spaces on the display your cursor is on, leaving out the one you are already on. The number of a Space also works.
+	<string>Type "@" and part of a workspace's name to jump to it (for example @ino). Matching is fuzzy (ino finds innopts) and lists only the workspaces on the display your cursor is on, leaving out the one you are already on. The number of a workspace also works.
 
 Type "w" and a window command to snap the window you were in (for example w left, w top right, w max, w restore).
 

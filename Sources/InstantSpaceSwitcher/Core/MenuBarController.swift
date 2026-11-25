@@ -73,8 +73,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     menu.addItem(NSMenuItem.separator())
 
-    let spacesItem = NSMenuItem(title: "Spaces", action: nil, keyEquivalent: "")
-    let spacesSubmenu = NSMenu(title: "Spaces")
+    let spacesItem = NSMenuItem(title: "Workspaces", action: nil, keyEquivalent: "")
+    let spacesSubmenu = NSMenu(title: "Workspaces")
     spacesSubmenu.delegate = self
     spacesSubmenu.autoenablesItems = false
     spacesItem.submenu = spacesSubmenu
@@ -83,8 +83,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     menu.addItem(spacesItem)
     spacesMenuItem = spacesItem
 
-    let moveItem = NSMenuItem(title: "Move Current Window to Space", action: nil, keyEquivalent: "")
-    let moveSubmenu = NSMenu(title: "Move Current Window to Space")
+    let moveItem = NSMenuItem(title: "Move Current Window to Workspace", action: nil, keyEquivalent: "")
+    let moveSubmenu = NSMenu(title: "Move Current Window to Workspace")
     moveSubmenu.delegate = self
     moveSubmenu.autoenablesItems = false
     moveItem.submenu = moveSubmenu
@@ -212,7 +212,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     submenu.removeAllItems()
 
     guard let info = cachedSpaceInfo, info.count > 0 else {
-      let item = NSMenuItem(title: "No accessible spaces", action: nil, keyEquivalent: "")
+      let item = NSMenuItem(title: "No workspaces", action: nil, keyEquivalent: "")
       item.isEnabled = false
       submenu.addItem(item)
       return
@@ -268,7 +268,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
       items = [NSMenuItem(title: "Needs Accessibility access", action: nil, keyEquivalent: "")]
     } else if let window = WindowMover.focusedWindow(), window.pid != ProcessInfo.processInfo.processIdentifier {
       items = WindowClickMenu.shared.sendItems(for: window)
-        ?? [NSMenuItem(title: "Can't read this display's Spaces", action: nil, keyEquivalent: "")]
+        ?? [NSMenuItem(title: "Can't read this display's workspaces", action: nil, keyEquivalent: "")]
     } else {
       items = [NSMenuItem(title: "No window to move", action: nil, keyEquivalent: "")]
     }
@@ -281,7 +281,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     submenu.removeAllItems()
     let store = StackingStore.shared
     let key = StackManager.shared.spaceKeyUnderCursor()
-    let here = NSMenuItem(title: "Pause on This Space", action: #selector(togglePauseHere(_:)), keyEquivalent: "")
+    let here = NSMenuItem(title: "Pause on This Workspace", action: #selector(togglePauseHere(_:)), keyEquivalent: "")
     here.target = self
     here.isEnabled = key != nil
     here.state = key.map { store.settings.pausedSpaces.contains($0) } == true ? .on : .off

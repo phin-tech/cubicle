@@ -17,7 +17,7 @@ final class KeyboardShortcutsViewController: NSViewController {
 
   // The send-window menu's modifier-click, recorded like a shortcut but with a click.
   private let clickEnabledCheckbox = NSButton(
-    checkboxWithTitle: "Click a window for its Send to Space menu:", target: nil, action: nil)
+    checkboxWithTitle: "Click a window for its Send to Workspace menu:", target: nil, action: nil)
   private let clickRecorder = ShortcutRecorderControl(frame: NSRect(x: 0, y: 0, width: 150, height: 22))
   private let snapCheckbox = NSButton(
     checkboxWithTitle: "Window shortcuts (⌃⌥ arrows for halves, U I J K for quarters, ↩ maximize, "

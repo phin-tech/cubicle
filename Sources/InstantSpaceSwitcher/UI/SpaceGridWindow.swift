@@ -120,7 +120,7 @@ final class SpaceGridWindow {
     guard AXIsProcessTrusted() else { return Self.report("Accessibility is not granted to Cubicle.") }
     guard let window = WindowMover.focusedWindow() else { return Self.report("Could not find the focused window.") }
     guard let spaces = WindowSender.spaces(for: window) else {
-      return Self.report("Could not read the Spaces on the window's display.")
+      return Self.report("Could not read the workspaces on the window's display.")
     }
     present(spaces, sending: window)
   }

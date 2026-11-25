@@ -17,7 +17,7 @@ final class PreferencesTabViewController: NSTabViewController {
     addTabViewItem(generalTab)
     addTabViewItem(shortcutsTab)
     let spacesTab = NSTabViewItem(viewController: SpaceNamesViewController())
-    spacesTab.label = "Spaces"
+    spacesTab.label = "Workspaces"
     spacesTab.image = NSImage(systemSymbolName: "rectangle.3.group", accessibilityDescription: "Spaces")
     addTabViewItem(spacesTab)
     let stackingTab = NSTabViewItem(viewController: StackingSettingsViewController())
