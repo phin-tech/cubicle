@@ -9,11 +9,12 @@ Cubicle began as a fork of [InstantSpaceSwitcher](https://github.com/jurplel/Ins
 - **Workspace grid** (default Ctrl+Option+Cmd+Space): a grid of the workspaces on the display under your cursor, with arrow-key, number-key and click navigation.
 - **Search by name**: type to filter. Matching is fuzzy ("ino" finds "innopts") and ignores the workspace you are already on.
 - **Custom names**: press ⌃R in the grid to rename the selected workspace, or use Settings > Workspaces.
+- **As many workspaces as you like**: each display starts with 8. ⌃N in the grid or `cubicle new-space` adds one; ⌃⌫ twice in the grid or `cubicle remove-space` removes one, and its windows join the workspace before it.
 - **Trackpad swipes**: three- or four-finger swipes left and right switch workspaces (Settings > General).
 - **Move a workspace** to the next display with its windows and name: the menu bar, `cubicle move-workspace`, or a shortcut.
 - **Send a window** to another workspace from the grid (⇧Return), the ⌃⌥⌘-click window menu, or `cubicle send`.
 - **Window snapping**: halves, quarters, Maximize, Full Screen, Center and Restore, Rectangle-style. The shortcuts are Rectangle's (⌃⌥ + arrows, U/I/J/K, ↩, C, ⌫), plus ⌃⌥F for Full Screen, which covers the whole display and hides the menu bar and Dock without leaving the workspace, and are off until you turn them on in Settings > Keyboard Shortcuts. Also in the ⌃⌥⌘-click window menu, `cubicle snap`, and Alfred's `w` keyword. Settings > General has a gap setting.
-- **`cubicle` CLI**: `cubicle list [--here] [query]`, `cubicle go <name|number>`, `cubicle send <name|number>`, `cubicle left|right`, `cubicle new-space`, `cubicle grid`, `cubicle snap <action> [--app <name>|--window <id>|--previous]`, `cubicle windows [--json]`, `cubicle actions`, `cubicle gap [points]`. It talks to the running app over a private local socket, so it needs no Accessibility permission of its own, and it starts Cubicle if it is not running.
+- **`cubicle` CLI**: `cubicle list [--here] [query]`, `cubicle go <name|number>`, `cubicle send <name|number>`, `cubicle left|right`, `cubicle new-space`, `cubicle remove-space [name|number]`, `cubicle grid`, `cubicle snap <action> [--app <name>|--window <id>|--previous]`, `cubicle windows [--json]`, `cubicle actions`, `cubicle gap [points]`. It talks to the running app over a private local socket, so it needs no Accessibility permission of its own, and it starts Cubicle if it is not running.
 - **Alfred workflow** (`alfred/`): type `@` plus part of a workspace's name, e.g. `@ino`, or `w` plus a window command, e.g. `w left`. Needs the Alfred Powerpack.
 
 ### Install (from source)

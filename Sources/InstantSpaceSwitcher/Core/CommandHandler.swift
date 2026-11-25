@@ -24,8 +24,12 @@ enum CommandHandler {
       WindowPicker.shared.start()
       return CubicleResponse(ok: true, message: "Click windows, then press Return to name the new workspace.")
     case "new-space":
-      VirtualWorkspaces.shared.count += 1
-      return CubicleResponse(ok: true, message: "Each display now has \(VirtualWorkspaces.shared.count) workspaces.")
+      let workspaces = VirtualWorkspaces.shared
+      guard let screen = workspaces.displayUnderCursor() else {
+        return CubicleResponse(ok: false, message: "Could not read the display under the cursor.")
+      }
+      return CubicleResponse(ok: true, message: "\(screen.name) now has \(workspaces.addWorkspace(on: screen.uuid)) workspaces.")
+    case "remove-space": return removeSpace(request.argument ?? "")
     case "grid":
       SpaceGridWindow.shared.show()
       return CubicleResponse(ok: true)
@@ -196,6 +200,32 @@ enum CommandHandler {
   }
 
   /// Switches on the display under the cursor, the same display the grid and hotkeys act on.
+  /// Removes a workspace on the display under the cursor: the one named or numbered, else the one showing.
+  private static func removeSpace(_ query: String) -> CubicleResponse {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let spaces = SpaceCatalog.shared.spacesUnderCursor(),
+      let screen = VirtualWorkspaces.shared.displayUnderCursor()
+    else { return CubicleResponse(ok: false, message: "Could not read the workspaces on the current display.") }
+    let cells = SpaceGridWindow.cells(for: spaces)
+    let target: Int
+    if trimmed.isEmpty {
+      target = spaces.currentIndex
+    } else if let number = Int(trimmed) {
+      guard (1...cells.count).contains(number) else {
+        return CubicleResponse(ok: false, message: "There is no workspace \(number); this display has \(cells.count).")
+      }
+      target = number - 1
+    } else {
+      let hits = SpaceGridLayout.matches(in: cells, query: trimmed)
+      guard let best = SpaceGridLayout.bestMatch(in: cells, query: trimmed, among: hits) else {
+        return CubicleResponse(ok: false, message: "No workspace matches '\(trimmed)'.")
+      }
+      target = best
+    }
+    let outcome = VirtualWorkspaces.shared.removeWorkspace(target, on: screen)
+    return CubicleResponse(ok: outcome.ok, message: outcome.message)
+  }
+
   private static func go(_ query: String) -> CubicleResponse {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return CubicleResponse(ok: false, message: "Usage: cubicle go <name|number>") }

@@ -130,23 +130,24 @@ final class SpaceGridWindow {
     panel = nil
   }
 
-  func show() {
+  func show(selecting selection: Int? = nil) {
     guard let spaces = SpaceCatalog.shared.spacesUnderCursor() else {
       NSSound.beep()
       return
     }
-    present(spaces, sending: nil)
+    present(spaces, sending: nil, selecting: selection)
   }
 
   /// `sending` is the window send mode moves; without it, the grid switches Spaces, and ⇧Return sends the
   /// focused window instead.
-  private func present(_ spaces: DisplaySpaces, sending: WindowMover.Target?) {
+  private func present(_ spaces: DisplaySpaces, sending: WindowMover.Target?, selecting selection: Int? = nil) {
     let screen = Self.screen(for: spaces.screenID) ?? NSScreen.main
     guard let screen else { return }
 
     close()
     let view = SpaceGridView(
-      cells: Self.cells(for: spaces), currentIndex: spaces.currentIndex, sendingName: sending?.displayName)
+      cells: Self.cells(for: spaces), currentIndex: spaces.currentIndex, sendingName: sending?.displayName,
+      selected: selection)
     view.onActivate = { [weak self] index, send in
       guard let self else { return }
       self.close()
@@ -159,6 +160,22 @@ final class SpaceGridWindow {
       }
     }
     view.onCancel = { [weak self] in self?.close() }
+    view.onAdd = { [weak self] in
+      guard let screen = VirtualWorkspaces.screens().first(where: { $0.uuid == spaces.display.identifier }) else {
+        return NSSound.beep()
+      }
+      let total = VirtualWorkspaces.shared.addWorkspace(on: screen.uuid)
+      self?.show(selecting: total - 1)
+    }
+    view.onRemove = { [weak self] index in
+      guard let screen = VirtualWorkspaces.screens().first(where: { $0.uuid == spaces.display.identifier }) else {
+        return NSSound.beep()
+      }
+      let outcome = VirtualWorkspaces.shared.removeWorkspace(index, on: screen)
+      if !outcome.ok { NSSound.beep() }
+      OSDWindow.shared.show(message: outcome.message, screenID: screen.id, force: true, duration: 2)
+      self?.show(selecting: max(index - 1, 0))
+    }
     view.onRename = { index, name -> String?? in
       guard spaces.display.spaces.indices.contains(index),
         let key = spaces.display.spaces[index].identity.key,
@@ -257,9 +274,18 @@ final class SpaceGridView: NSVisualEffectView {
     get { cellsView.onRename }
     set { cellsView.onRename = newValue }
   }
+  var onAdd: (() -> Void)? {
+    get { cellsView.onAdd }
+    set { cellsView.onAdd = newValue }
+  }
+  var onRemove: ((Int) -> Void)? {
+    get { cellsView.onRemove }
+    set { cellsView.onRemove = newValue }
+  }
 
-  init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil) {
-    cellsView = SpaceGridCellsView(cells: cells, currentIndex: currentIndex, sendingName: sendingName)
+  init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil, selected: Int? = nil) {
+    cellsView = SpaceGridCellsView(
+      cells: cells, currentIndex: currentIndex, sendingName: sendingName, selected: selected)
     super.init(frame: .zero)
     material = .hudWindow
     state = .active
@@ -288,6 +314,10 @@ final class SpaceGridCellsView: NSView {
   /// Saves a workspace's new name (empty clears it). Returns the name it now has (nil for none), or nil when the
   /// name was refused.
   var onRename: ((Int, String) -> String??)?
+  var onAdd: (() -> Void)?
+  var onRemove: ((Int) -> Void)?
+  /// The workspace a first ⌃⌫ asked to remove; a second ⌃⌫ on it removes it.
+  private var removing: Int?
 
   private var cells: [SpaceGridCell]
   /// The name being typed for the selected workspace while ⌃R renames it.
@@ -304,16 +334,20 @@ final class SpaceGridCellsView: NSView {
   private let gap: CGFloat = 12
   private let cellSize = NSSize(width: 150, height: 90)
 
-  init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil) {
+  init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil, selected: Int? = nil) {
     self.cells = cells
     self.currentIndex = currentIndex
     self.sendingName = sendingName
-    self.selected = cells.indices.contains(currentIndex) ? currentIndex : 0
+    if let selected, cells.indices.contains(selected) {
+      self.selected = selected
+    } else {
+      self.selected = cells.indices.contains(currentIndex) ? currentIndex : 0
+    }
     self.matchIndices = cells.map(\.index)
     super.init(frame: .zero)
     if sendMode {
       matchIndices.removeAll { $0 == currentIndex }
-      if cells.count > 1 { selected = (currentIndex + 1) % cells.count }
+      if cells.count > 1 { self.selected = (currentIndex + 1) % cells.count }
     }
     addTrackingArea(
       NSTrackingArea(
@@ -392,21 +426,23 @@ final class SpaceGridCellsView: NSView {
 
   private func drawHeader() {
     let text: String
-    if renaming != nil {
+    if let removing {
+      text = "Remove “\(cells[removing].title)”? Press ⌃⌫ again. Its windows join the one before it."
+    } else if renaming != nil {
       text = "Rename workspace \(selected + 1)  ·  ↩ saves  ·  esc cancels  ·  empty clears"
     } else if !query.isEmpty {
       text = "Search: \(query)"
     } else if let sendingName {
       text = "Send “\(sendingName)” to…"
     } else {
-      text = "Type to search  ·  1–9 to jump  ·  ⌃R renames  ·  ⇧↩ sends the window"
+      text = "Type to search  ·  1–9 jump  ·  ⇧↩ sends the window  ·  ⌃R rename  ·  ⌃N add  ·  ⌃⌫ remove"
     }
     let paragraph = NSMutableParagraphStyle()
     paragraph.lineBreakMode = .byTruncatingTail
     let attributes: [NSAttributedString.Key: Any] = [
       .font: NSFont.systemFont(ofSize: 14, weight: .regular),
       .foregroundColor: NSColor.white.withAlphaComponent(
-        query.isEmpty && !sendMode && renaming == nil ? 0.45 : 0.95),
+        query.isEmpty && !sendMode && renaming == nil && removing == nil ? 0.45 : 0.95),
       .paragraphStyle: paragraph,
     ]
     NSAttributedString(string: text, attributes: attributes)
@@ -496,9 +532,22 @@ final class SpaceGridCellsView: NSView {
   override func keyDown(with event: NSEvent) {
     if renaming != nil { return renameKeyDown(event) }
     let flags = event.modifierFlags.intersection([.command, .control, .option])
-    if flags == .control, event.charactersIgnoringModifiers == "r" {
-      if sendMode { return NSSound.beep() }
-      return startRenaming()
+    let wasRemoving = removing
+    if removing != nil {
+      removing = nil
+      needsDisplay = true
+    }
+    if flags == .control, !sendMode {
+      switch event.keyCode {
+      case 15: return startRenaming()  // R
+      case 45: return onAdd?() ?? ()  // N
+      case 51:  // Delete
+        if wasRemoving == selected { return onRemove?(selected) ?? () }
+        removing = selected
+        needsDisplay = true
+        return
+      default: break
+      }
     }
     if !event.modifierFlags.intersection([.command, .control]).isEmpty {
       NSSound.beep()

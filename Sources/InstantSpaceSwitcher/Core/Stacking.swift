@@ -133,6 +133,14 @@ final class StackingStore: ObservableObject {
 
   /// A workspace moved to another display: its bindings and its pause go with it. An app binding there for the
   /// same app gives way, since an app has one app binding per workspace.
+  /// Forgets a removed workspace's bindings (window bindings too) and its pause.
+  func removeLayout(_ key: String) {
+    save { settings in
+      settings.bindings.removeAll { $0.spaceKey == key }
+      settings.pausedSpaces.remove(key)
+    }
+  }
+
   func moveLayout(from old: String, to new: String) {
     guard old != new else { return }
     save { settings in

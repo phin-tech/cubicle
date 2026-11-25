@@ -43,7 +43,10 @@ let usage = """
                         Add or remove an app on the ignore list (default: the focused window's app)
     layout [--all]      Show this workspace's bindings and stacks, or every workspace's bindings
     grid                Open the workspace grid
-    new-space           Add a workspace to every display
+    new-space           Add a workspace to the display under the cursor
+    remove-space [name|number]
+                        Remove a workspace on the display under the cursor (the current one if none is
+                        given). Its windows join the workspace before it; later ones move down a number.
     pick-workspace      Click windows to put on a new workspace, then name it
     move-workspace      Move the workspace under the cursor, with its windows and name, to the next display
     help                Show this help
@@ -274,6 +277,11 @@ case "move-workspace":
 case "pick-workspace":
   let response = send(CubicleRequest(command: "pick-workspace"))
   guard response.ok else { fail(response.message ?? "pick-workspace failed") }
+  if let message = response.message { print(message) }
+
+case "remove-space":
+  let response = send(CubicleRequest(command: "remove-space", argument: rest.joined(separator: " ")))
+  guard response.ok else { fail(response.message ?? "remove-space failed") }
   if let message = response.message { print(message) }
 
 case "new-space":

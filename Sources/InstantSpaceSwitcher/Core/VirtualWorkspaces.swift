@@ -30,20 +30,40 @@ extension Notification.Name {
 final class VirtualWorkspaces {
   static let shared = VirtualWorkspaces()
 
-  /// Workspaces per display. It starts at 8 and has no upper limit: `cubicle new-space`, the walkthrough and a new
-  /// workspace from picked windows add one. A workspace that still has windows never disappears, whatever the
-  /// setting says. Only the first 16 have shortcuts of their own.
-  var count: Int {
-    get {
-      let setting = max(UserDefaults.standard.object(forKey: Self.countKey) as? Int ?? Self.defaultCount, 1)
-      let inUse = (members.values.map(\.workspace).max() ?? -1) + 1
-      return max(setting, inUse, (active.values.max() ?? -1) + 1)
-    }
-    set {
-      UserDefaults.standard.set(max(newValue, 1), forKey: Self.countKey)
-      NotificationCenter.default.post(name: .virtualWorkspaceDidChange, object: nil)
-    }
+  /// How many workspaces `display` has. Each display starts with 8 and has no upper limit: adding one (`cubicle
+  /// new-space`, the grid's ⌃N, the walkthrough, a new workspace from picked windows) and removing one change only
+  /// that display. A workspace that still has windows never disappears, whatever the setting says. Only the first
+  /// 16 have shortcuts of their own.
+  func count(_ display: String) -> Int {
+    let saved = (UserDefaults.standard.dictionary(forKey: Self.countsKey) as? [String: Int])?[display]
+    // Before counts were per display, one count covered them all.
+    let setting = max(saved ?? UserDefaults.standard.object(forKey: Self.countKey) as? Int ?? Self.defaultCount, 1)
+    let inUse = (members.values.filter { $0.display == display }.map(\.workspace).max() ?? -1) + 1
+    return max(setting, inUse, (active[display] ?? 0) + 1)
   }
+
+  private func setCount(_ value: Int, on display: String) {
+    var counts = UserDefaults.standard.dictionary(forKey: Self.countsKey) as? [String: Int] ?? [:]
+    counts[display] = max(value, 1)
+    UserDefaults.standard.set(counts, forKey: Self.countsKey)
+    SpaceCatalog.shared.refresh()
+    NotificationCenter.default.post(name: .virtualWorkspaceDidChange, object: nil)
+  }
+
+  /// Adds a workspace at the end of `display`'s. Returns how many it has now.
+  @discardableResult
+  func addWorkspace(on display: String) -> Int {
+    setCount(count(display) + 1, on: display)
+    return count(display)
+  }
+
+  /// Adds a workspace to every display.
+  func addWorkspaceEverywhere() {
+    for screen in Self.screens() { addWorkspace(on: screen.uuid) }
+  }
+
+  /// The display under the cursor, which the CLI's workspace commands act on.
+  func displayUnderCursor() -> Screen? { Self.screenUnderCursor() }
 
   private struct Member {
     var element: AXUIElement
@@ -63,6 +83,7 @@ final class VirtualWorkspaces {
   }
 
   private static let countKey = "virtualWorkspaceCount"
+  private static let countsKey = "virtualWorkspaceCounts"
   private static let defaultCount = 8
   private var members: [UInt32: Member] = [:]
   private var active: [String: Int] = [:]
@@ -136,7 +157,7 @@ final class VirtualWorkspaces {
     return screens.map { screen in
       SpaceDisplay(
         identifier: screen.uuid, name: screens.count > 1 ? screen.name : "Workspaces",
-        spaces: (0..<count).map { index in
+        spaces: (0..<count(screen.uuid)).map { index in
           SpaceDescription(
             index: UInt32(index), identity: SpaceIdentity(key: Self.key(screen.uuid, index)),
             spaceID: spaceID(screen.uuid, index))
@@ -163,13 +184,13 @@ final class VirtualWorkspaces {
   }
 
   func activeIndex(_ display: String) -> Int {
-    min(active[display] ?? 0, count - 1)
+    min(active[display] ?? 0, count(display) - 1)
   }
 
   /// What the menu bar shows: the workspaces of the display with the menu bar.
   func menuBarInfo() -> WorkspaceInfo? {
     guard let screen = Self.screens().first else { return nil }
-    return WorkspaceInfo(currentIndex: activeIndex(screen.uuid), count: count, displayID: screen.uuid)
+    return WorkspaceInfo(currentIndex: activeIndex(screen.uuid), count: count(screen.uuid), displayID: screen.uuid)
   }
 
   // MARK: - Switching
@@ -191,8 +212,8 @@ final class VirtualWorkspaces {
 
   @discardableResult
   func switchTo(_ index: Int, on screen: Screen, showOSD: Bool = true) -> Bool {
-    guard (0..<count).contains(index), !switching else { return false }
     let display = screen.uuid
+    guard (0..<count(display)).contains(index), !switching else { return false }
     let current = activeIndex(display)
     guard index != current else { return true }
     switching = true
@@ -274,7 +295,7 @@ final class VirtualWorkspaces {
     let moving = members.filter { $0.value.display == source.uuid && $0.value.workspace == index }.map(\.key)
     guard !moving.isEmpty else { return (false, "This workspace has no windows to move.") }
     let occupied = Set(members.values.filter { $0.display == target.uuid }.map(\.workspace))
-    guard let landing = ([index] + (0..<count)).first(where: { !occupied.contains($0) }) else {
+    guard let landing = ([index] + (0..<count(target.uuid))).first(where: { !occupied.contains($0) }) else {
       return (false, "\(target.name) has no empty workspace. `cubicle new-space` adds one.")
     }
 
@@ -344,15 +365,15 @@ final class VirtualWorkspaces {
     else { return (false, "Cubicle can't move those windows to a workspace.") }
 
     let occupied = Set(members.values.filter { $0.display == display }.map(\.workspace))
-    let used = Set((0..<count).filter { index in
+    let used = Set((0..<count(display)).filter { index in
       let key = Self.key(display, index)
       return SpaceNameStore.shared.name(for: key) != nil || !StackingStore.shared.bindings(on: key).isEmpty
     })
     guard
       let index = Self.unusedWorkspace(
-        count: count, occupied: occupied, used: used, showing: activeIndex(display))
+        count: count(display), occupied: occupied, used: used, showing: activeIndex(display))
     else { return (false, "There's no workspace to use.") }
-    if index == count { count += 1 }
+    if index >= count(display) { setCount(index + 1, on: display) }
 
     let key = Self.key(display, index)
     SpaceNameStore.shared.setName(name, for: key)
@@ -386,15 +407,70 @@ final class VirtualWorkspaces {
     (0..<count).first { !occupied.contains($0) && !used.contains($0) && $0 != showing } ?? count
   }
 
+  // MARK: - Removing a workspace
+
+  /// Removes workspace `index` from `screen`, as removing a desktop in Mission Control does: its windows join the
+  /// workspace before it (the one after, for the first), its name and bindings go, and the workspaces after it each
+  /// move down one number, taking their windows, names and layouts along.
+  func removeWorkspace(_ index: Int, on screen: Screen) -> (ok: Bool, message: String) {
+    let display = screen.uuid
+    let total = count(display)
+    guard !switching else { return (false, "A workspace switch is under way.") }
+    guard (0..<total).contains(index) else { return (false, "There is no workspace \(index + 1).") }
+    guard total > 1 else { return (false, "This is the only workspace on \(screen.name).") }
+    reconcile()
+
+    let names = SpaceNameStore.shared
+    let removedKey = Self.key(display, index)
+    let title = names.name(for: removedKey) ?? "Workspace \(index + 1)"
+    let destination = index > 0 ? index - 1 : 1
+    // Off the workspace before anything is renumbered, so the switch is an ordinary one.
+    if activeIndex(display) == index { switchTo(destination, on: screen, showOSD: false) }
+
+    let orphans = members.filter { $0.value.display == display && $0.value.workspace == index }.map(\.key)
+    for id in orphans { members[id]?.workspace = destination }
+    if activeIndex(display) == destination {
+      move(park: [], unpark: orphans.filter { members[$0]?.parkedFrame != nil })
+    }
+
+    // Renumber what came after.
+    for (id, member) in members where member.display == display && member.workspace > index {
+      members[id]?.workspace = member.workspace - 1
+    }
+    if let current = active[display], current > index { active[display] = current - 1 }
+    if let back = previous[display] {
+      previous[display] = back == index ? nil : back > index ? back - 1 : back
+    }
+    names.setName("", for: removedKey)
+    StackingStore.shared.removeLayout(removedKey)
+    lastFocused.removeValue(forKey: removedKey)
+    for later in (index + 1)..<total {
+      let from = Self.key(display, later)
+      let to = Self.key(display, later - 1)
+      if let name = names.name(for: from) {
+        names.setName(name, for: to)
+        names.setName("", for: from)
+      }
+      StackingStore.shared.moveLayout(from: from, to: to)
+      if let remembered = lastFocused.removeValue(forKey: from) { lastFocused[to] = remembered }
+    }
+    setCount(total - 1, on: display)
+    save()
+    SpaceCatalog.shared.refresh()
+    NotificationCenter.default.post(name: .virtualWorkspaceDidChange, object: nil)
+    let moved = orphans.isEmpty ? "" : "; its \(orphans.count) window\(orphans.count == 1 ? "" : "s") moved over"
+    return (true, "Removed \(title)\(moved). \(screen.name) has \(count(display)) workspaces.")
+  }
+
   // MARK: - Sending
 
   /// Moves a window to workspace `index` on its display. It disappears at once if that workspace isn't showing.
   func send(_ window: WindowMover.Target, toIndex index: Int) -> (ok: Bool, message: String) {
-    guard (0..<count).contains(index) else { return (false, "There is no workspace \(index + 1).") }
     reconcile()
     guard var member = members[window.windowID] else {
       return (false, "\(window.appName)'s window can't be moved to a workspace.")
     }
+    guard (0..<count(member.display)).contains(index) else { return (false, "There is no workspace \(index + 1).") }
     let title = SpaceNameStore.shared.name(for: Self.key(member.display, index)) ?? "Workspace \(index + 1)"
     guard member.workspace != index else { return (true, "\(window.appName) is already on \(title).") }
     member.workspace = index
@@ -659,7 +735,8 @@ final class VirtualWorkspaces {
       else { continue }
       let bindings = store.settings.bindings.filter { $0.bundleID == bundleID }
       guard !bindings.isEmpty, !bindings.contains(where: \.isWindowBinding) else { continue }
-      let homes = bindings.compactMap { Self.workspace(forKey: $0.spaceKey, on: screens, count: count) }
+      let homes = bindings.compactMap { Self.workspace(forKey: $0.spaceKey, on: screens, count: .max) }
+        .filter { $0.index < count($0.display) }
       guard let home = homes.first,
         !homes.contains(where: { $0.display == member.display && $0.index == member.workspace }),
         !store.isPaused(Self.key(home.display, home.index)),

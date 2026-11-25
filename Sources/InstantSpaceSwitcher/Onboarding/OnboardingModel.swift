@@ -118,8 +118,8 @@ final class OnboardingModel: ObservableObject {
 
   /// Every display gets one more workspace.
   func addWorkspace() {
-    VirtualWorkspaces.shared.count += 1
-    notice = "Each display now has \(VirtualWorkspaces.shared.count) workspaces."
+    VirtualWorkspaces.shared.addWorkspaceEverywhere()
+    notice = "Each display now has one more workspace."
     refreshSpaces()
   }
 

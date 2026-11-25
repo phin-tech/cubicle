@@ -52,6 +52,19 @@ final class WorkspaceMoveTests: XCTestCase {
     }
   }
 
+  func testARemovedWorkspaceTakesItsBindingsAndPauseAway() {
+    withStore { store in
+      store.bindApp(on: "workspace:a:3", bundleID: "com.apple.Mail", appName: "Mail", zone: .full)
+      store.bindApp(on: "workspace:a:4", bundleID: "com.apple.Safari", appName: "Safari", zone: .leftHalf)
+      store.setPaused(true, spaceKey: "workspace:a:3")
+      store.removeLayout("workspace:a:3")
+      store.moveLayout(from: "workspace:a:4", to: "workspace:a:3")
+      XCTAssertEqual(store.bindings(on: "workspace:a:3").map(\.bundleID), ["com.apple.Safari"])
+      XCTAssertTrue(store.bindings(on: "workspace:a:4").isEmpty)
+      XCTAssertFalse(store.isPaused("workspace:a:3"))
+    }
+  }
+
   // MARK: - Which workspace a binding points at
 
   private let screens = [
