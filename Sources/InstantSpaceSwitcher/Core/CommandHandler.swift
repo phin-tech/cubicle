@@ -45,6 +45,16 @@ enum CommandHandler {
       }
       return CubicleResponse(ok: true, windows: WindowSnapper.listWindows())
     case "gap": return gap(request.argument)
+    case "switch-style":
+      guard let name = request.argument, !name.isEmpty else {
+        return CubicleResponse(ok: true, message: SwitchStyle.current.rawValue)
+      }
+      guard let style = SwitchStyle(rawValue: name) else {
+        let names = SwitchStyle.allCases.map(\.rawValue).joined(separator: ", ")
+        return CubicleResponse(ok: false, message: "Unknown style '\(name)'. Use one of: \(names).")
+      }
+      SwitchStyle.current = style
+      return CubicleResponse(ok: true, message: "Workspace switches now use \(style.rawValue).")
     case "bind", "bind-window": return bind(request)
     case "unbind", "unbind-window":
       return reply(StackManager.shared.unbind(window: request.command == "unbind-window", selector(for: request)))

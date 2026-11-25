@@ -22,6 +22,8 @@ let usage = """
     actions [--json|--alfred] [query]
                         List the window commands; --alfred prints them for Alfred's "w" keyword
     gap [points]        Show or set the gap kept between snapped windows (0-100, default 0)
+    switch-style [name] Show or set how workspace switches hide window moves:
+                        none (default), black, freeze or black-freeze
 
   Stacking (snapping to a zone also puts the window in that zone's stack):
     bind <zone|space> [--app <name>|--window <id>|--previous]
@@ -320,6 +322,12 @@ case "gap":
   let response = send(CubicleRequest(command: "gap", argument: rest.first))
   guard response.ok else { fail(response.message ?? "gap failed") }
   if let message = response.message { print(rest.isEmpty ? "\(message) pt" : message) }
+
+case "switch-style":
+  guard rest.count <= 1 else { fail("Usage: cubicle switch-style [none|black|freeze|black-freeze]") }
+  let response = send(CubicleRequest(command: "switch-style", argument: rest.first))
+  guard response.ok else { fail(response.message ?? "switch-style failed") }
+  if let message = response.message { print(message) }
 
 case "bind", "bind-window":
   let target = windowTarget(rest)

@@ -78,9 +78,8 @@ final class VirtualWorkspaces {
     }
     reconcile()
     // Windows whose workspace isn't showing go (back) off screen; the rest come back.
-    for (id, member) in members {
-      if member.workspace == activeIndex(member.display) { unpark(id) } else { park(id) }
-    }
+    let showing = members.filter { $0.value.workspace == activeIndex($0.value.display) }.map(\.key)
+    move(park: members.keys.filter { !showing.contains($0) }, unpark: showing)
     save()
     activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
@@ -96,7 +95,7 @@ final class VirtualWorkspaces {
     guard Self.enabled else { return }
     if let observer = activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
     let parked = members.filter { $0.value.parkedFrame != nil }.map(\.key)
-    for id in parked { unpark(id) }
+    move(park: [], unpark: parked)
     // Keep the assignments, but record that nothing is parked any more.
     save()
   }
@@ -196,12 +195,15 @@ final class VirtualWorkspaces {
     }
     let outgoing = members.filter { $0.value.display == display && $0.value.workspace == current }.map(\.key)
     let incoming = members.filter { $0.value.display == display && $0.value.workspace == index }.map(\.key)
-    for id in outgoing { park(id) }
-    for id in incoming { unpark(id) }
+    let focusTarget = focusTarget(display: display, index: index, incoming: incoming)
+    let started = Date()
+    SwitchCover.shared.cover(screen, style: SwitchStyle.current) {
+      move(park: outgoing, unpark: incoming) { focus(focusTarget) }
+    }
+    NSLog("Cubicle: workspace switch moved %d windows in %.0f ms (%@)", outgoing.count + incoming.count,
+          Date().timeIntervalSince(started) * 1000, SwitchStyle.current.rawValue)
     previous[display] = current
     active[display] = index
-
-    focusAfterSwitch(display: display, index: index, incoming: incoming)
     save()
     if showOSD {
       let message = SpaceNameStore.shared.message(
@@ -213,9 +215,12 @@ final class VirtualWorkspaces {
     return true
   }
 
-  private func focusAfterSwitch(display: String, index: Int, incoming: [UInt32]) {
+  private func focusTarget(display: String, index: Int, incoming: [UInt32]) -> UInt32? {
     let remembered = lastFocused[Self.key(display, index)]
-    let target = remembered.flatMap { incoming.contains($0) ? $0 : nil } ?? Self.frontmost(of: incoming)
+    return remembered.flatMap { incoming.contains($0) ? $0 : nil } ?? Self.frontmost(of: incoming)
+  }
+
+  private func focus(_ target: UInt32?) {
     if let target, let member = members[target] {
       AXUIElementSetAttributeValue(member.element, kAXMainAttribute as CFString, kCFBooleanTrue)
       AXUIElementPerformAction(member.element, kAXRaiseAction as CFString)
@@ -250,7 +255,11 @@ final class VirtualWorkspaces {
     guard member.workspace != index else { return (true, "\(window.appName) is already on \(title).") }
     member.workspace = index
     members[window.windowID] = member
-    if index == activeIndex(member.display) { unpark(window.windowID) } else { park(window.windowID) }
+    if index == activeIndex(member.display) {
+      move(park: [], unpark: [window.windowID])
+    } else {
+      move(park: [window.windowID], unpark: [])
+    }
     save()
     NotificationCenter.default.post(name: .virtualWorkspaceDidChange, object: nil)
     return (true, "\(window.appName) → \(title)")
@@ -258,35 +267,130 @@ final class VirtualWorkspaces {
 
   // MARK: - Parking
 
-  /// Moves a window just off its display's bottom corner, leaving a pixel on screen (macOS pulls a window that is
-  /// wholly off screen back on). The corner is one with no other display beyond it.
-  private func park(_ id: UInt32) {
-    guard var member = members[id], !Self.isMinimized(member.element), !Self.isFullScreen(member.element),
-      let frame = WindowMover.frame(of: member.element),
-      let screen = Self.screens().first(where: { $0.uuid == member.display }) ?? Self.screens().first
-    else { return }
-    if member.parkedFrame == nil { member.parkedFrame = frame }
-    members[id] = member
-    let others = Self.screens().filter { $0.uuid != screen.uuid }.map(\.bounds)
-    let bounds = screen.bounds
-    let candidates = [
-      CGPoint(x: bounds.maxX - 1, y: bounds.maxY - 1),
-      CGPoint(x: bounds.minX - frame.width + 1, y: bounds.maxY - 1),
-    ]
-    let spot = candidates.first { point in
-      let rect = CGRect(origin: point, size: frame.size).insetBy(dx: 2, dy: 2)
-      return !others.contains { $0.intersects(rect) }
-    } ?? candidates[0]
-    Self.setPosition(member.element, spot)
+  /// One window's part of a move, made on the main thread and carried out on another.
+  private struct Job: @unchecked Sendable {
+    enum Action {
+      /// Off the display: its bounds, the other displays' bounds, and the frame saved already if it's parked.
+      case park(bounds: CGRect, others: [CGRect], saved: CGRect?)
+      case unpark(CGRect)
+    }
+    let id: UInt32
+    let pid: pid_t
+    let element: AXUIElement
+    let action: Action
   }
 
-  private func unpark(_ id: UInt32) {
-    guard var member = members[id], let frame = member.parkedFrame else { return }
-    Self.setPosition(member.element, frame.origin)
-    Self.setSize(member.element, frame.size)
-    Self.setPosition(member.element, frame.origin)
-    member.parkedFrame = nil
-    members[id] = member
+  private enum Outcome {
+    /// Off screen; the frame to put it back to.
+    case parked(CGRect)
+    case unparked
+    /// Left alone (minimized or full screen), or Accessibility failed.
+    case skipped
+  }
+
+  /// Parks and unparks windows in two phases, so the desktop never shows between them: first every incoming window
+  /// is put back (front-most first) and Cubicle waits for them all, then `between` runs (focus), and only then do the
+  /// outgoing windows leave. Within a phase each app's windows move on a thread of their own, since Accessibility
+  /// waits on the app; letting the two phases race is what made AeroSpace flicker more when it went parallel
+  /// (AeroSpace #1305; Tessel measured 12/12 glitchy switches before this ordering, 0/12 after, tessel #33).
+  private func move(park parking: [UInt32], unpark unparking: [UInt32], between: () -> Void = {}) {
+    let screens = Self.screens()
+    var incoming: [Job] = []
+    for id in Self.frontToBack(unparking) {
+      guard let member = members[id], let frame = member.parkedFrame else { continue }
+      incoming.append(Job(id: id, pid: member.pid, element: member.element, action: .unpark(frame)))
+    }
+    record(Self.run(incoming))
+    between()
+    var outgoing: [Job] = []
+    for id in parking {
+      guard let member = members[id],
+        let screen = screens.first(where: { $0.uuid == member.display }) ?? screens.first
+      else { continue }
+      let others = screens.filter { $0.uuid != screen.uuid }.map(\.bounds)
+      outgoing.append(
+        Job(
+          id: id, pid: member.pid, element: member.element,
+          action: .park(bounds: screen.bounds, others: others, saved: member.parkedFrame)))
+    }
+    record(Self.run(outgoing))
+  }
+
+  private func record(_ outcomes: [(UInt32, Outcome)]) {
+    for (id, outcome) in outcomes {
+      switch outcome {
+      case .parked(let frame): members[id]?.parkedFrame = frame
+      case .unparked: members[id]?.parkedFrame = nil
+      case .skipped: break
+      }
+    }
+  }
+
+  /// Runs the jobs, one thread per app, and returns when all are done. Grouping keeps each app's jobs in order.
+  nonisolated private static func run(_ jobs: [Job]) -> [(UInt32, Outcome)] {
+    guard !jobs.isEmpty else { return [] }
+    var order: [pid_t] = []
+    var byApp: [pid_t: [Job]] = [:]
+    for job in jobs {
+      if byApp[job.pid] == nil { order.append(job.pid) }
+      byApp[job.pid, default: []].append(job)
+    }
+    let groups = order.map { byApp[$0]! }
+    let lock = NSLock()
+    nonisolated(unsafe) var results: [(UInt32, Outcome)] = []
+    DispatchQueue.concurrentPerform(iterations: groups.count) { index in
+      let outcomes = withoutEnhancedUserInterface(groups[index][0].pid) { groups[index].map { ($0.id, perform($0)) } }
+      lock.lock()
+      results.append(contentsOf: outcomes)
+      lock.unlock()
+    }
+    return results
+  }
+
+  /// With AXEnhancedUserInterface on (VoiceOver mode, which Chrome, Electron and others turn on), apps animate
+  /// Accessibility moves and can drop a size written just before a position. AeroSpace, yabai and Rift switch it off
+  /// around their writes and back on after.
+  nonisolated private static func withoutEnhancedUserInterface<T>(_ pid: pid_t, _ body: () -> T) -> T {
+    let app = AXUIElementCreateApplication(pid)
+    AXUIElementSetMessagingTimeout(app, 0.5)
+    let attribute = "AXEnhancedUserInterface" as CFString
+    guard bool(app, attribute as String) else { return body() }
+    AXUIElementSetAttributeValue(app, attribute, kCFBooleanFalse)
+    defer { AXUIElementSetAttributeValue(app, attribute, kCFBooleanTrue) }
+    return body()
+  }
+
+  nonisolated private static func perform(_ job: Job) -> Outcome {
+    AXUIElementSetMessagingTimeout(job.element, 0.5)
+    switch job.action {
+    case .unpark(let target):
+      setPosition(job.element, target.origin)
+      // Parking doesn't resize, so the size is usually right already; writing it anyway costs a round trip.
+      if let now = frame(of: job.element), now.size != target.size {
+        setSize(job.element, target.size)
+        setPosition(job.element, target.origin)
+      }
+      return .unparked
+    case .park(let bounds, let others, let saved):
+      guard !bool(job.element, kAXMinimizedAttribute), !bool(job.element, "AXFullScreen"),
+        let current = frame(of: job.element)
+      else { return .skipped }
+      setPosition(job.element, parkingSpot(for: current.size, bounds: bounds, others: others))
+      return .parked(saved ?? current)
+    }
+  }
+
+  /// Just off the display's bottom corner, leaving a pixel on screen (macOS pulls a window that is wholly off screen
+  /// back on). The corner is one with no other display beyond it.
+  nonisolated private static func parkingSpot(for size: CGSize, bounds: CGRect, others: [CGRect]) -> CGPoint {
+    let candidates = [
+      CGPoint(x: bounds.maxX - 1, y: bounds.maxY - 1),
+      CGPoint(x: bounds.minX - size.width + 1, y: bounds.maxY - 1),
+    ]
+    return candidates.first { point in
+      let rect = CGRect(origin: point, size: size).insetBy(dx: 2, dy: 2)
+      return !others.contains { $0.intersects(rect) }
+    } ?? candidates[0]
   }
 
   func isParked(_ id: UInt32) -> Bool {
@@ -307,6 +411,7 @@ final class VirtualWorkspaces {
     guard Self.enabled else { return }
     let screens = Self.screens()
     var seen = Set<UInt32>()
+    var strayed: [UInt32] = []
     for window in currentWindows() {
       seen.insert(window.id)
       if var member = members[window.id] {
@@ -315,7 +420,7 @@ final class VirtualWorkspaces {
         if member.workspace != activeIndex(member.display), member.parkedFrame != nil,
           let frame = WindowMover.frame(of: window.element), Self.isVisible(frame, on: screens)
         {
-          park(window.id)
+          strayed.append(window.id)
         }
         continue
       }
@@ -328,6 +433,7 @@ final class VirtualWorkspaces {
         element: window.element, pid: window.pid, display: screen.uuid, workspace: activeIndex(screen.uuid))
     }
     members = members.filter { seen.contains($0.key) }
+    move(park: strayed, unpark: [])
     // A display that went away: its windows join the main display's workspaces.
     if let main = screens.first {
       let known = Set(screens.map(\.uuid))
@@ -372,6 +478,19 @@ final class VirtualWorkspaces {
     }
   }
 
+  /// `ids` in the window server's stacking order, front-most first; unknown ones last.
+  private static func frontToBack(_ ids: [UInt32]) -> [UInt32] {
+    guard ids.count > 1,
+      let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+        as? [[String: Any]]
+    else { return ids }
+    var rank: [UInt32: Int] = [:]
+    for (index, entry) in list.enumerated() {
+      if let number = entry[kCGWindowNumber as String] as? NSNumber { rank[number.uint32Value] = index }
+    }
+    return ids.sorted { (rank[$0] ?? .max) < (rank[$1] ?? .max) }
+  }
+
   /// The front-most of `ids` by the window server's stacking order.
   private static func frontmost(of ids: [UInt32]) -> UInt32? {
     guard !ids.isEmpty,
@@ -387,28 +506,39 @@ final class VirtualWorkspaces {
     return ids.first
   }
 
-  private static func string(_ element: AXUIElement, _ attribute: String) -> String? {
+  nonisolated private static func string(_ element: AXUIElement, _ attribute: String) -> String? {
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return nil }
     return value as? String
   }
 
-  private static func bool(_ element: AXUIElement, _ attribute: String) -> Bool {
+  nonisolated private static func bool(_ element: AXUIElement, _ attribute: String) -> Bool {
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else { return false }
     return (value as? Bool) ?? false
   }
 
-  private static func isMinimized(_ element: AXUIElement) -> Bool { bool(element, kAXMinimizedAttribute) }
-  private static func isFullScreen(_ element: AXUIElement) -> Bool { bool(element, "AXFullScreen") }
+  nonisolated private static func frame(of element: AXUIElement) -> CGRect? {
+    var position: CFTypeRef?
+    var size: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &position) == .success,
+      AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &size) == .success,
+      let position, let size
+    else { return nil }
+    var origin = CGPoint.zero
+    var extent = CGSize.zero
+    AXValueGetValue(position as! AXValue, .cgPoint, &origin)
+    AXValueGetValue(size as! AXValue, .cgSize, &extent)
+    return CGRect(origin: origin, size: extent)
+  }
 
-  private static func setPosition(_ element: AXUIElement, _ point: CGPoint) {
+  nonisolated private static func setPosition(_ element: AXUIElement, _ point: CGPoint) {
     var point = point
     guard let value = AXValueCreate(.cgPoint, &point) else { return }
     AXUIElementSetAttributeValue(element, kAXPositionAttribute as CFString, value)
   }
 
-  private static func setSize(_ element: AXUIElement, _ size: CGSize) {
+  nonisolated private static func setSize(_ element: AXUIElement, _ size: CGSize) {
     var size = size
     guard let value = AXValueCreate(.cgSize, &size) else { return }
     AXUIElementSetAttributeValue(element, kAXSizeAttribute as CFString, value)

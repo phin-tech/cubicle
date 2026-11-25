@@ -16,6 +16,19 @@ enum WindowServer {
   private static let copyManagedDisplaySpaces = symbol("CGSCopyManagedDisplaySpaces", as: CopyManagedDisplaySpaces.self)
   private static let copySpacesForWindows = symbol("CGSCopySpacesForWindows", as: CopySpacesForWindows.self)
   private static let getWindow = symbol("_AXUIElementGetWindow", as: GetWindow.self)
+  private typealias UpdateToggle = @convention(c) (Int32) -> Int32
+  private static let disableUpdate = symbol("SLSDisableUpdate", as: UpdateToggle.self)
+  private static let reenableUpdate = symbol("SLSReenableUpdate", as: UpdateToggle.self)
+
+  /// Runs `body` between SLSDisableUpdate and SLSReenableUpdate. These defer this connection's own drawing; Tessel
+  /// measured them freezing nothing on macOS 27 when the moved windows belong to other apps, so this is only kept to
+  /// compare (`cubicle switch-style freeze`). Without the symbols, `body` just runs.
+  static func withScreenUpdatesDisabled<T>(_ body: () -> T) -> T {
+    guard let connection, let disableUpdate, let reenableUpdate else { return body() }
+    _ = disableUpdate(connection)
+    defer { _ = reenableUpdate(connection) }
+    return body()
+  }
 
   private static func symbol<T>(_ name: String, as type: T.Type) -> T? {
     // RTLD_DEFAULT: every image already loaded. SkyLight and HIServices come in with AppKit.
