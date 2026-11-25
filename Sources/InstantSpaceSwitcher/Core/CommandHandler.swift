@@ -37,6 +37,26 @@ enum CommandHandler {
       SpaceGridWindow.shared.show()
       return CubicleResponse(ok: true)
     case "snap": return snap(request)
+    case "stash":
+      let name = request.argument ?? ""
+      guard let edge = StashEdge(name: name) else {
+        return CubicleResponse(ok: false, message: "Unknown edge '\(name)'. Use left, right or top.")
+      }
+      var slot: StashSlot?
+      if let position = request.query, !position.isEmpty {
+        guard let named = StashSlot(name: position) else {
+          return CubicleResponse(ok: false, message: "Unknown position '\(position)'. Use top, middle or bottom.")
+        }
+        slot = named
+      }
+      let outcome = Stash.shared.stash(edge, slot: slot, selector(for: request))
+      return CubicleResponse(ok: outcome.ok, message: outcome.message)
+    case "unstash":
+      let outcome = Stash.shared.unstash(selector(for: request))
+      return CubicleResponse(ok: outcome.ok, message: outcome.message)
+    case "stashed":
+      let lines = Stash.shared.list().map { "\($0.edge.rawValue.padding(toLength: 6, withPad: " ", startingAt: 0)) \($0.id)  \($0.name)" }
+      return CubicleResponse(ok: true, message: lines.isEmpty ? "No windows are stashed." : lines.joined(separator: "\n"))
     case "windows":
       guard AXIsProcessTrusted() else {
         return CubicleResponse(ok: false, message: "Accessibility is not granted to Cubicle.")

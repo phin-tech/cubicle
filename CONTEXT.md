@@ -38,6 +38,14 @@ The snap that keeps a window's size and moves it to the middle of its display. I
 **Restore**:
 The snap that puts a window back to the frame it had before Cubicle first snapped it. Moving a window by hand and snapping it again records a new frame to restore to. Restore (and **Center**) also lets go of the window: it leaves its **Zone** and becomes a **Floating window**. A bound window Cubicle placed automatically restores to the frame it opened with.
 
+**Stash**:
+Tucking one window away against the left, right or top edge of its display, leaving a **Tab** there. A stashed window belongs to no **Workspace**: its Tab is on that edge whichever workspace is showing. Hovering the Tab pops the window out beside it, and it tucks back once the mouse leaves the window and the Tabs; clicking the Tab, or into the window, keeps it out until you click elsewhere. Stashing it against the same edge again (or unstashing it, or dragging it away from the edge) makes it an ordinary **Floating window** again, on the workspace showing. Stashing lets go of the window, as **Restore** does. Quitting Cubicle puts stashed windows back where they were, and the next launch stashes them again.
+_Avoid_: hide, minimize, pin (a **Binding** isn't one either), sidebar
+
+**Tab**:
+The small handle on a display edge for one **Stashed** window. A setting picks its look: the app's icon, the icon and the window's title, or a sticky note in the app's colour (from its icon, or chosen per app) with the app's name written along the edge. A new Tab goes in the middle of its edge; dragging puts it anywhere along an edge, onto another edge or display, or in line with Tabs it's dropped on. Tabs close together push apart rather than overlap. The top, middle and bottom of a side (left, centre and right along the top) can also be picked by name. It is Cubicle's own, after Slaps' edge Tabs; Slaps is not involved.
+_Avoid_: handle, drawer
+
 **Gap**:
 One user setting, in pixels, kept between snapped windows and between a window and the display edge. Shared by snaps and **Zones**.
 

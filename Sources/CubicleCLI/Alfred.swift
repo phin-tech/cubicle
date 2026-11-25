@@ -23,7 +23,7 @@ enum AlfredMenu {
     Section(word: "windows", title: "Windows", subtitle: "Every window on every workspace: go to one, or send it somewhere", opens: true),
     Section(word: "go", title: "Go to Workspace", subtitle: "Switch the display under the cursor", opens: true),
     Section(word: "send", title: "Send Window", subtitle: "Move the window you were in to another workspace", opens: true),
-    Section(word: "snap", title: "Snap Window", subtitle: "Halves, quarters, maximize, full screen, center, restore", opens: true),
+    Section(word: "snap", title: "Snap Window", subtitle: "Halves, quarters, maximize, full screen, center, restore, stash", opens: true),
     Section(word: "new", title: "New Workspace from Windows…", subtitle: "Click windows, then name their workspace", opens: false, arg: "pick-workspace"),
     Section(word: "add", title: "Add a Workspace", subtitle: "One more on the display under the cursor", opens: false, arg: "new-space"),
     Section(word: "rename", title: "Rename This Workspace", subtitle: "Type the new name", opens: true),
@@ -155,6 +155,9 @@ enum AlfredMenu {
   private static func snaps(matching query: String) -> [AlfredItem] {
     let items = SnapAction.matching(query).map {
       AlfredItem(title: $0.displayName, subtitle: "Snap the window you were in", arg: "snap\t\($0.rawValue)", valid: true)
+    } + StashEdge.matching(query).map {
+      AlfredItem(title: $0.displayName, subtitle: "Tuck the window you were in against the edge (again to unstash)",
+        arg: "stash\t\($0.rawValue)", valid: true)
     }
     return items.isEmpty ? [AlfredItem(title: "No window command matches", subtitle: query, arg: nil, valid: false)] : items
   }

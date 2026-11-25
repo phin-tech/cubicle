@@ -35,6 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     WindowClickMenu.shared.setEnabled(WindowClickMenu.isEnabledSetting)
     AppHistory.shared.start()
     FullScreen.shared.start()
+    // Before the workspaces, so they leave stashed windows alone.
+    Stash.shared.start()
     VirtualWorkspaces.shared.start()
     FullScreen.shared.didStartWorkspaces()
     SwipeSwitcher.shared.setEnabled(SwipeSwitcher.isEnabledSetting)
@@ -61,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     commandServer?.stop()
+    Stash.shared.stop()
     VirtualWorkspaces.shared.stop()
     FullScreen.shared.stop()
     stopObservingAppActivation()
@@ -375,6 +378,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         OSDWindow.shared.show(message: outcome.message, screenID: screenID, force: true)
       case .newWorkspaceFromWindows:
         WindowPicker.shared.toggle()
+      case .stashLeft, .stashRight, .stashTop:
+        if !Stash.shared.stash(identifier.stashEdge!).ok { NSSound.beep() }
       case .togglePause:
         let paused = StackManager.shared.spaceKeyUnderCursor().map(StackingStore.shared.isPaused) ?? false
         let outcome = StackManager.shared.setPaused(!paused, everywhere: false)

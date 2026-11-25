@@ -25,5 +25,10 @@ final class PreferencesTabViewController: NSTabViewController {
     stackingTab.identifier = "stacking"
     stackingTab.image = NSImage(systemSymbolName: "square.stack", accessibilityDescription: "Stacking")
     addTabViewItem(stackingTab)
+    let stashTab = NSTabViewItem(viewController: StashSettingsViewController())
+    stashTab.label = "Stash"
+    stashTab.identifier = "stash"
+    stashTab.image = NSImage(systemSymbolName: "sidebar.right", accessibilityDescription: "Stash")
+    addTabViewItem(stashTab)
   }
 }

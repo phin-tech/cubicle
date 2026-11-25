@@ -636,7 +636,7 @@ final class VirtualWorkspaces {
 
   /// Just off the display's bottom corner, leaving a pixel on screen (macOS pulls a window that is wholly off screen
   /// back on). The corner is one with no other display beyond it.
-  nonisolated private static func parkingSpot(for size: CGSize, bounds: CGRect, others: [CGRect]) -> CGPoint {
+  nonisolated static func parkingSpot(for size: CGSize, bounds: CGRect, others: [CGRect]) -> CGPoint {
     let candidates = [
       CGPoint(x: bounds.maxX - 1, y: bounds.maxY - 1),
       CGPoint(x: bounds.minX - size.width + 1, y: bounds.maxY - 1),
@@ -684,6 +684,29 @@ final class VirtualWorkspaces {
       width: frame.width, height: frame.height)
   }
 
+  // MARK: - Stashing
+
+  /// Lets go of a window that's being stashed: it belongs to no workspace while it's on the edge.
+  func release(_ id: UInt32) {
+    guard members.removeValue(forKey: id) != nil else { return }
+    save()
+    NotificationCenter.default.post(name: .virtualWorkspaceDidChange, object: nil)
+  }
+
+  /// Takes back an unstashed window, onto the workspace showing on the display it's on. Unlike a window Cubicle
+  /// finds for itself, it isn't gathered to its app's binding: it stays where you're looking.
+  func adopt(_ window: WindowMover.Target) {
+    let screens = Self.screens()
+    let center = CGPoint(x: window.frame.midX, y: window.frame.midY)
+    guard let screen = screens.first(where: { $0.bounds.contains(center) })
+      ?? screens.first(where: { $0.bounds.intersects(window.frame) }) ?? screens.first
+    else { return }
+    members[window.windowID] = Member(
+      element: window.window, pid: window.pid, display: screen.uuid, workspace: activeIndex(screen.uuid))
+    save()
+    NotificationCenter.default.post(name: .virtualWorkspaceDidChange, object: nil)
+  }
+
   func isParked(_ id: UInt32) -> Bool {
     members[id]?.parkedFrame != nil
   }
@@ -710,6 +733,8 @@ final class VirtualWorkspaces {
     var strayed: [UInt32] = []
     var adopted: [UInt32] = []
     for window in currentWindows() {
+      // A stashed window is on no workspace: it stays out of the members (and is dropped if it was one).
+      if Stash.shared.contains(window.id) { continue }
       seen.insert(window.id)
       if var member = members[window.id] {
         member.element = window.element

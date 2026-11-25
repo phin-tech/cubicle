@@ -19,6 +19,16 @@ let usage = """
                         top-right, bottom-left, bottom-right, maximize, center or restore. It acts on the
                         focused window (from Alfred or Raycast, the window you were in before), or on
                         another app's front window, a window by id, or the app you were in before this one.
+    stash <left|right|top> [--position <top|middle|bottom>] [--app <name>|--window <id>|--previous]
+                        Tuck a window away against an edge of its display, with a Tab there on every
+                        workspace: hover the Tab to pop the window out, click to keep it out. --position puts
+                        the Tab at the top, middle or bottom of the edge (left, centre or right along the top;
+                        dragging the Tab does the same). Stashing it against the same edge again unstashes it;
+                        another edge or position moves its Tab.
+    unstash [--app <name>|--window <id>|--previous]
+                        Put a stashed window back where it was, on the workspace showing (default: the
+                        window that's popped out, else the focused one)
+    stashed             List the stashed windows, with their edges and ids
     windows [--json]    List the windows on the current workspace, with the ids --window takes
     actions [--json|--alfred] [query]
                         List the window commands; --alfred prints them for Alfred's "w" keyword
@@ -345,6 +355,34 @@ case "snap":
       previous: target.previous ? true : nil))
   guard response.ok else { fail(response.message ?? "snap failed") }
   if let message = response.message { print(message) }
+
+case "stash":
+  // `--position` is taken out first: windowTarget knows only the window flags.
+  var words = rest
+  var position: String?
+  if let flag = words.firstIndex(of: "--position") {
+    guard words.indices.contains(flag + 1), StashSlot(name: words[flag + 1]) != nil else {
+      fail("--position is top, middle or bottom (left, centre or right along the top).")
+    }
+    position = words[flag + 1]
+    words.removeSubrange(flag...(flag + 1))
+  }
+  let target = windowTarget(words)
+  guard let name = target.rest.first, target.rest.count == 1, StashEdge(name: name) != nil else {
+    fail("Usage: cubicle stash <left|right|top> [--position <top|middle|bottom>] [--app <name>|--window <id>|--previous]")
+  }
+  report(send(CubicleRequest(
+    command: "stash", argument: name, query: position, app: target.app, window: target.window,
+    previous: target.previous ? true : nil)), command)
+
+case "unstash":
+  let target = windowTarget(rest)
+  guard target.rest.isEmpty else { fail("Usage: cubicle unstash [--app <name>|--window <id>|--previous]") }
+  report(send(CubicleRequest(
+    command: "unstash", app: target.app, window: target.window, previous: target.previous ? true : nil)), command)
+
+case "stashed":
+  report(send(CubicleRequest(command: "stashed")), command)
 
 case "windows":
   if let unknown = rest.first(where: { $0 != "--json" }) { fail("Unknown option '\(unknown)'.\n\n\(usage)") }

@@ -457,11 +457,13 @@ enum HotkeyIdentifier: String, CaseIterable {
   case togglePause
   case moveWorkspaceToNextDisplay
   case newWorkspaceFromWindows
+  case stashLeft, stashRight, stashTop
 
   /// Off until you turn it on: moving windows is experimental, and the snap and stacking keys would take over ⌃⌥
   /// keys other apps use.
   var enabledByDefault: Bool {
-    self == .newWorkspaceFromWindows || (self != .sendWindow && !Self.windowIdentifiers.contains(self))
+    self == .newWorkspaceFromWindows || stashEdge != nil
+      || (self != .sendWindow && !Self.windowIdentifiers.contains(self))
   }
 
   /// The stacking shortcuts (cycle, swap, pause).
@@ -503,17 +505,30 @@ enum HotkeyIdentifier: String, CaseIterable {
 
   static var snapIdentifiers: [HotkeyIdentifier] { allCases.filter { $0.snapAction != nil } }
 
+  /// The edge this shortcut stashes the focused window against, for the stash shortcuts.
+  var stashEdge: StashEdge? {
+    switch self {
+    case .stashLeft: return .left
+    case .stashRight: return .right
+    case .stashTop: return .top
+    default: return nil
+    }
+  }
+
   /// The window shortcuts, kept in one dictionary: the snaps and the stacking ones.
   static var windowIdentifiers: [HotkeyIdentifier] {
     allCases.filter {
-      $0.snapAction != nil || $0.isStacking || $0 == .moveWorkspaceToNextDisplay || $0 == .newWorkspaceFromWindows
+      $0.snapAction != nil || $0.isStacking || $0.stashEdge != nil || $0 == .moveWorkspaceToNextDisplay
+        || $0 == .newWorkspaceFromWindows
     }
   }
 
   /// The shortcuts Settings and the walkthrough turn on and off together. Pause has its own switch: it changes
   /// what Cubicle does rather than acting once.
   static var windowShortcutGroup: [HotkeyIdentifier] {
-    windowIdentifiers.filter { ![.togglePause, .moveWorkspaceToNextDisplay, .newWorkspaceFromWindows].contains($0) }
+    windowIdentifiers.filter {
+      ![.togglePause, .moveWorkspaceToNextDisplay, .newWorkspaceFromWindows].contains($0) && $0.stashEdge == nil
+    }
   }
 
   var displayName: String {
@@ -548,6 +563,7 @@ enum HotkeyIdentifier: String, CaseIterable {
     case .togglePause: return "Stack: pause or resume this workspace"
     case .moveWorkspaceToNextDisplay: return "Move workspace to the next display"
     case .newWorkspaceFromWindows: return "New workspace from picked windows…"
+    case .stashLeft, .stashRight, .stashTop: return "\(stashEdge!.displayName) (or unstash)"
     default: return "Snap window: \(snapAction!.displayName)"
     }
   }
@@ -897,6 +913,14 @@ extension HotkeyIdentifier {
       return HotkeyCombination(
         keyCode: UInt32(kVK_ANSI_N), modifiers: UInt32(controlKey | optionKey | cmdKey), displayKey: "N",
         keyEquivalent: "n")
+    case .stashLeft, .stashRight, .stashTop:
+      // ⌃⌥⌘[ and ] for the sides, ⌃⌥⌘\ for the top.
+      let (keyCode, key): (Int, String) =
+        self == .stashLeft ? (kVK_ANSI_LeftBracket, "[") : self == .stashRight ? (kVK_ANSI_RightBracket, "]")
+        : (kVK_ANSI_Backslash, "\\")
+      return HotkeyCombination(
+        keyCode: UInt32(keyCode), modifiers: UInt32(controlKey | optionKey | cmdKey), displayKey: key,
+        keyEquivalent: key)
     default:
       if let snapAction { return .defaultSnap(snapAction) }
       if isStacking { return .defaultStacking(self) }
