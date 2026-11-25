@@ -159,6 +159,13 @@ final class SpaceGridWindow {
       }
     }
     view.onCancel = { [weak self] in self?.close() }
+    view.onRename = { index, name -> String?? in
+      guard spaces.display.spaces.indices.contains(index),
+        let key = spaces.display.spaces[index].identity.key,
+        SpaceNameStore.shared.setName(name, for: key)
+      else { return nil }
+      return .some(SpaceNameStore.shared.name(for: key))
+    }
 
     let size = view.preferredSize(maximum: screen.visibleFrame.insetBy(dx: 40, dy: 40).size)
     let panel = SpaceGridPanel(
@@ -246,6 +253,10 @@ final class SpaceGridView: NSVisualEffectView {
     get { cellsView.onCancel }
     set { cellsView.onCancel = newValue }
   }
+  var onRename: ((Int, String) -> String??)? {
+    get { cellsView.onRename }
+    set { cellsView.onRename = newValue }
+  }
 
   init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil) {
     cellsView = SpaceGridCellsView(cells: cells, currentIndex: currentIndex, sendingName: sendingName)
@@ -274,8 +285,13 @@ final class SpaceGridCellsView: NSView {
   /// The chosen Space, and whether to send the window there rather than switch.
   var onActivate: ((Int, Bool) -> Void)?
   var onCancel: (() -> Void)?
+  /// Saves a workspace's new name (empty clears it). Returns the name it now has (nil for none), or nil when the
+  /// name was refused.
+  var onRename: ((Int, String) -> String??)?
 
-  private let cells: [SpaceGridCell]
+  private var cells: [SpaceGridCell]
+  /// The name being typed for the selected workspace while ⌃R renames it.
+  private var renaming: String?
   private let currentIndex: Int
   /// Set in send mode: the window being sent. Its own Space can't be picked.
   private let sendingName: String?
@@ -356,11 +372,14 @@ final class SpaceGridCellsView: NSView {
       }
 
       let font = NSFont.systemFont(ofSize: cell.hasCustomName ? 17 : 34, weight: .medium)
-      let attributes: [NSAttributedString.Key: Any] = [
+      var attributes: [NSAttributedString.Key: Any] = [
         .font: font, .foregroundColor: NSColor.white.withAlphaComponent(isMatch ? 1 : 0.25),
         .paragraphStyle: paragraph,
       ]
-      let text = NSAttributedString(string: cell.title, attributes: attributes)
+      let editing = isSelected ? renaming : nil
+      let title = editing.map { $0 + "▏" } ?? cell.title
+      if editing != nil { attributes[.font] = NSFont.systemFont(ofSize: 17, weight: .medium) }
+      let text = NSAttributedString(string: title, attributes: attributes)
       let inset = frame.insetBy(dx: 10, dy: 8)
       let height = min(inset.height, ceil(text.boundingRect(
         with: NSSize(width: inset.width, height: inset.height),
@@ -373,18 +392,21 @@ final class SpaceGridCellsView: NSView {
 
   private func drawHeader() {
     let text: String
-    if !query.isEmpty {
+    if renaming != nil {
+      text = "Rename workspace \(selected + 1)  ·  ↩ saves  ·  esc cancels  ·  empty clears"
+    } else if !query.isEmpty {
       text = "Search: \(query)"
     } else if let sendingName {
       text = "Send “\(sendingName)” to…"
     } else {
-      text = "Type to search  ·  1–9 to jump  ·  ⇧↩ sends the window"
+      text = "Type to search  ·  1–9 to jump  ·  ⌃R renames  ·  ⇧↩ sends the window"
     }
     let paragraph = NSMutableParagraphStyle()
     paragraph.lineBreakMode = .byTruncatingTail
     let attributes: [NSAttributedString.Key: Any] = [
       .font: NSFont.systemFont(ofSize: 14, weight: .regular),
-      .foregroundColor: NSColor.white.withAlphaComponent(query.isEmpty && !sendMode ? 0.45 : 0.95),
+      .foregroundColor: NSColor.white.withAlphaComponent(
+        query.isEmpty && !sendMode && renaming == nil ? 0.45 : 0.95),
       .paragraphStyle: paragraph,
     ]
     NSAttributedString(string: text, attributes: attributes)
@@ -421,7 +443,63 @@ final class SpaceGridCellsView: NSView {
     if matchIndices.contains(index) { onActivate?(index, sendMode || shift) } else { NSSound.beep() }
   }
 
+  // MARK: - Renaming
+
+  private func startRenaming() {
+    let cell = cells[selected]
+    renaming = cell.hasCustomName ? cell.title : ""
+    needsDisplay = true
+  }
+
+  private func finishRenaming(save: Bool) {
+    guard let name = renaming else { return }
+    if save {
+      guard let saved = onRename?(selected, name) else { return NSSound.beep() }
+      let cell = cells[selected]
+      cells[selected] = SpaceGridCell(
+        index: cell.index, title: saved ?? String(cell.index + 1), hasCustomName: saved != nil)
+    }
+    renaming = nil
+    setQuery("")
+  }
+
+  private func renameKeyDown(_ event: NSEvent) {
+    let flags = event.modifierFlags.intersection([.command, .control, .option])
+    if flags == .command, event.charactersIgnoringModifiers == "v" {
+      let pasted = NSPasteboard.general.string(forType: .string)?.components(separatedBy: .newlines).first ?? ""
+      renaming? += pasted
+      needsDisplay = true
+      return
+    }
+    if flags == .command, event.charactersIgnoringModifiers == "a" || event.keyCode == 51 {
+      renaming = ""
+      needsDisplay = true
+      return
+    }
+    guard flags.isEmpty || flags == .option else { return NSSound.beep() }
+    switch event.keyCode {
+    case 36, 76: finishRenaming(save: true)
+    case 53: finishRenaming(save: false)
+    case 51:
+      renaming = String(renaming?.dropLast() ?? "")
+      needsDisplay = true
+    case 123, 124, 125, 126: NSSound.beep()
+    default:
+      guard let characters = event.characters, !characters.isEmpty,
+        characters.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
+      else { return NSSound.beep() }
+      renaming? += characters
+      needsDisplay = true
+    }
+  }
+
   override func keyDown(with event: NSEvent) {
+    if renaming != nil { return renameKeyDown(event) }
+    let flags = event.modifierFlags.intersection([.command, .control, .option])
+    if flags == .control, event.charactersIgnoringModifiers == "r" {
+      if sendMode { return NSSound.beep() }
+      return startRenaming()
+    }
     if !event.modifierFlags.intersection([.command, .control]).isEmpty {
       NSSound.beep()
       return
@@ -459,12 +537,14 @@ final class SpaceGridCellsView: NSView {
   }
 
   override func mouseMoved(with event: NSEvent) {
+    guard renaming == nil else { return }
     if let index = index(at: convert(event.locationInWindow, from: nil)), matchIndices.contains(index) {
       select(index)
     }
   }
 
   override func mouseDown(with event: NSEvent) {
+    if renaming != nil { return finishRenaming(save: true) }
     if let index = index(at: convert(event.locationInWindow, from: nil)) {
       if matchIndices.contains(index) { activate(index, shift: event.modifierFlags.contains(.shift)) }
     } else {
