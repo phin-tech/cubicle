@@ -407,6 +407,34 @@ final class VirtualWorkspaces {
     (0..<count).first { !occupied.contains($0) && !used.contains($0) && $0 != showing } ?? count
   }
 
+  // MARK: - Finding a window
+
+  /// The display and workspace a window is on.
+  func placement(of id: UInt32) -> (display: Screen, index: Int, showing: Bool)? {
+    guard let member = members[id], let screen = Self.screens().first(where: { $0.uuid == member.display }) else {
+      return nil
+    }
+    return (screen, member.workspace, member.workspace == activeIndex(member.display))
+  }
+
+  /// Shows the workspace a window is on and focuses it, unminimizing it if need be.
+  func reveal(_ window: WindowMover.Target) -> (ok: Bool, message: String) {
+    reconcile()
+    guard let member = members[window.windowID],
+      let screen = Self.screens().first(where: { $0.uuid == member.display })
+    else { return (false, "\(window.appName)'s window isn't on a workspace.") }
+    if Self.bool(member.element, kAXMinimizedAttribute) {
+      AXUIElementSetAttributeValue(member.element, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+    }
+    if member.workspace != activeIndex(member.display) {
+      lastFocused[Self.key(member.display, member.workspace)] = window.windowID
+      guard switchTo(member.workspace, on: screen) else { return (false, "Couldn't switch workspaces.") }
+    } else {
+      focus(window.windowID)
+    }
+    return (true, "\(window.displayName)")
+  }
+
   // MARK: - Removing a workspace
 
   /// Removes workspace `index` from `screen`, as removing a desktop in Mission Control does: its windows join the

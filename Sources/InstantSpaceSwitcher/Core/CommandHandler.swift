@@ -14,7 +14,9 @@ enum CommandHandler {
     switch request.command {
     case "list": return list(request)
     case "go": return go(request.argument ?? "")
-    case "send": return send(request.argument ?? "")
+    case "send": return send(request.argument ?? "", selector(for: request))
+    case "focus": return focus(selector(for: request))
+    case "new-workspace": return newWorkspace(named: request.argument ?? "", selector(for: request))
     case "left": return step(.left)
     case "right": return step(.right)
     case "move-workspace":
@@ -30,6 +32,7 @@ enum CommandHandler {
       }
       return CubicleResponse(ok: true, message: "\(screen.name) now has \(workspaces.addWorkspace(on: screen.uuid)) workspaces.")
     case "remove-space": return removeSpace(request.argument ?? "")
+    case "rename": return rename(request.argument ?? "", number: request.query)
     case "grid":
       SpaceGridWindow.shared.show()
       return CubicleResponse(ok: true)
@@ -100,14 +103,43 @@ enum CommandHandler {
   }
 
   /// Moves the focused window to a workspace on its display (by name or number). It's instant.
-  private static func send(_ query: String) -> CubicleResponse {
+  /// Shows a window's workspace and focuses it.
+  private static func focus(_ selector: WindowSnapper.Selector) -> CubicleResponse {
+    guard AXIsProcessTrusted() else {
+      return CubicleResponse(ok: false, message: "Accessibility is not granted to Cubicle.")
+    }
+    switch WindowSnapper.resolve(selector) {
+    case .failure(let failure): return CubicleResponse(ok: false, message: failure.message)
+    case .success(let window):
+      let outcome = VirtualWorkspaces.shared.reveal(window)
+      return CubicleResponse(ok: outcome.ok, message: outcome.message)
+    }
+  }
+
+  /// Puts a window on a workspace of its own, named `name` (numbered if empty), and shows it.
+  private static func newWorkspace(named name: String, _ selector: WindowSnapper.Selector) -> CubicleResponse {
+    guard AXIsProcessTrusted() else {
+      return CubicleResponse(ok: false, message: "Accessibility is not granted to Cubicle.")
+    }
+    switch WindowSnapper.resolve(selector) {
+    case .failure(let failure): return CubicleResponse(ok: false, message: failure.message)
+    case .success(let window):
+      let outcome = VirtualWorkspaces.shared.newWorkspace(
+        with: [window], named: name.trimmingCharacters(in: .whitespacesAndNewlines))
+      return CubicleResponse(ok: outcome.ok, message: outcome.message)
+    }
+  }
+
+  private static func send(_ query: String, _ selector: WindowSnapper.Selector) -> CubicleResponse {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return CubicleResponse(ok: false, message: "Usage: cubicle send <name|number>") }
     guard AXIsProcessTrusted() else {
       return CubicleResponse(ok: false, message: "Accessibility is not granted to Cubicle.")
     }
-    guard let window = WindowMover.focusedWindow() else {
-      return CubicleResponse(ok: false, message: "Could not find the focused window.")
+    let window: WindowMover.Target
+    switch WindowSnapper.resolve(selector) {
+    case .failure(let failure): return CubicleResponse(ok: false, message: failure.message)
+    case .success(let found): window = found
     }
     guard let spaces = WindowSender.spaces(for: window) else {
       return CubicleResponse(ok: false, message: "Could not read the workspaces on the window's display.")
@@ -200,6 +232,26 @@ enum CommandHandler {
   }
 
   /// Switches on the display under the cursor, the same display the grid and hotkeys act on.
+  /// Names a workspace on the display under the cursor: the one numbered, else the one showing.
+  private static func rename(_ name: String, number: String?) -> CubicleResponse {
+    guard let spaces = SpaceCatalog.shared.spacesUnderCursor() else {
+      return CubicleResponse(ok: false, message: "Could not read the workspaces on the current display.")
+    }
+    var index = spaces.currentIndex
+    if let number {
+      guard let value = Int(number), spaces.display.spaces.indices.contains(value - 1) else {
+        return CubicleResponse(ok: false, message: "There is no workspace \(number).")
+      }
+      index = value - 1
+    }
+    guard let key = spaces.display.spaces[index].identity.key, SpaceNameStore.shared.setName(name, for: key) else {
+      return CubicleResponse(ok: false, message: "That name is too long.")
+    }
+    let named = SpaceNameStore.shared.name(for: key)
+    return CubicleResponse(
+      ok: true, message: named.map { "Workspace \(index + 1) is now \($0)." } ?? "Workspace \(index + 1) has no name now.")
+  }
+
   /// Removes a workspace on the display under the cursor: the one named or numbered, else the one showing.
   private static func removeSpace(_ query: String) -> CubicleResponse {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)

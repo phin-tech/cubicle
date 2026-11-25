@@ -341,7 +341,7 @@ enum WindowSnapper {
     return value as? [AXUIElement] ?? []
   }
 
-  /// Every standard window on the current Space, front app first.
+  /// Every window, on every workspace, front app first.
   static func listWindows() -> [CubicleWindowEntry] {
     let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
     let apps = regularApps().sorted { ($0.processIdentifier == front ? 0 : 1) < ($1.processIdentifier == front ? 0 : 1) }
@@ -359,13 +359,19 @@ enum WindowSnapper {
         guard string(window, kAXRoleAttribute) == kAXWindowRole as String,
           let target = WindowMover.target(for: window)
         else { continue }
+        let placement = VirtualWorkspaces.shared.placement(of: target.windowID)
+        let workspaceName = placement.flatMap {
+          SpaceNameStore.shared.name(for: VirtualWorkspaces.key($0.display.uuid, $0.index))
+        }
         entries.append(
           CubicleWindowEntry(
             id: target.windowID, app: app.localizedName ?? "?", bundleID: app.bundleIdentifier,
             title: target.title, x: target.frame.minX, y: target.frame.minY, width: target.frame.width,
             height: target.frame.height,
             isFocused: app.processIdentifier == front && focusedID == target.windowID,
-            isMinimized: bool(window, kAXMinimizedAttribute) == true))
+            isMinimized: bool(window, kAXMinimizedAttribute) == true,
+            workspace: placement.map { $0.index + 1 }, workspaceName: workspaceName,
+            display: placement?.display.name, isShowing: placement?.showing))
       }
     }
     return entries

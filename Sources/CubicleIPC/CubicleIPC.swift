@@ -33,7 +33,7 @@ public struct CubicleRequest: Codable, Equatable {
   }
 }
 
-/// A window on the current Space, for `cubicle windows`.
+/// A window, for `cubicle windows`: every workspace's, with the workspace it's on.
 public struct CubicleWindowEntry: Codable, Equatable {
   /// The window server's number for the window, which `--window` takes.
   public var id: UInt32
@@ -47,11 +47,23 @@ public struct CubicleWindowEntry: Codable, Equatable {
   public var height: Double
   public var isFocused: Bool
   public var isMinimized: Bool
+  /// The one-based number of the workspace it's on, that workspace's name, and its display's name. Nil for
+  /// windows Cubicle doesn't put on workspaces.
+  public var workspace: Int?
+  public var workspaceName: String?
+  public var display: String?
+  /// On the workspace showing on its display.
+  public var isShowing: Bool?
 
   public init(
     id: UInt32, app: String, bundleID: String?, title: String, x: Double, y: Double, width: Double,
-    height: Double, isFocused: Bool, isMinimized: Bool
+    height: Double, isFocused: Bool, isMinimized: Bool, workspace: Int? = nil, workspaceName: String? = nil,
+    display: String? = nil, isShowing: Bool? = nil
   ) {
+    self.workspace = workspace
+    self.workspaceName = workspaceName
+    self.display = display
+    self.isShowing = isShowing
     self.id = id
     self.app = app
     self.bundleID = bundleID

@@ -11,7 +11,8 @@ let usage = """
     list --alfred [query]
                         Same as --here, printed as Alfred Script Filter JSON (the current workspace is left out)
     go <name|number>    Switch to a workspace by fuzzy name or one-based number
-    send <name|number>  Move the focused window to a workspace on its display
+      send <name|number> [--window <id>|--app <name>|--previous]
+                        Move a window (the focused one by default) to a workspace on its display
     left | right        Switch one workspace left or right
     snap <action> [--app <name>|--window <id>|--previous]
                         Move and resize a window: left-half, right-half, top-half, bottom-half, top-left,
@@ -44,6 +45,13 @@ let usage = """
     layout [--all]      Show this workspace's bindings and stacks, or every workspace's bindings
     grid                Open the workspace grid
     new-space           Add a workspace to the display under the cursor
+    rename <name> [--number <n>]
+                        Name the workspace showing under the cursor (or workspace n); an empty name clears it
+    focus --window <id>|--app <name>
+                        Go to a window, switching to its workspace
+    new-workspace [name] [--window <id>|--app <name>|--previous]
+                        Put a window (the focused one by default) on a new workspace and go there
+    alfred [query]      The Alfred workflow's menu, as Script Filter JSON
     remove-space [name|number]
                         Remove a workspace on the display under the cursor (the current one if none is
                         given). Its windows join the workspace before it; later ones move down a number.
@@ -182,6 +190,8 @@ struct AlfredItem: Encodable {
   var subtitle: String
   var arg: String?
   var valid: Bool
+  /// What Tab fills in after the keyword, to open a list.
+  var autocomplete: String? = nil
 }
 
 func printAlfred(_ items: [AlfredItem]) {
@@ -263,11 +273,42 @@ case "go":
   if let message = response.message { print(message) }
 
 case "send":
-  let query = rest.joined(separator: " ")
-  guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { fail("Usage: cubicle send <name|number>") }
-  let response = send(CubicleRequest(command: "send", argument: query))
-  guard response.ok else { fail(response.message ?? "send failed") }
-  if let message = response.message { print(message) }
+  let target = windowTarget(rest)
+  let query = target.rest.joined(separator: " ")
+  guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+    fail("Usage: cubicle send <name|number> [--app <name>|--window <id>|--previous]")
+  }
+  report(send(CubicleRequest(
+    command: "send", argument: query, app: target.app, window: target.window,
+    previous: target.previous ? true : nil)), command)
+
+case "focus":
+  let target = windowTarget(rest)
+  guard target.rest.isEmpty, target.window != nil || target.app != nil || target.previous else {
+    fail("Usage: cubicle focus --window <id>|--app <name>|--previous")
+  }
+  report(send(CubicleRequest(
+    command: "focus", app: target.app, window: target.window, previous: target.previous ? true : nil)), command)
+
+case "new-workspace":
+  let target = windowTarget(rest)
+  report(send(CubicleRequest(
+    command: "new-workspace", argument: target.rest.joined(separator: " "), app: target.app, window: target.window,
+    previous: target.previous ? true : nil)), command)
+
+case "rename":
+  // `rename <name>` names the workspace showing under the cursor; `rename <name> --number 3` names another.
+  var words = rest
+  var number: String?
+  if let flag = words.firstIndex(of: "--number") {
+    guard words.indices.contains(flag + 1) else { fail("--number needs a workspace number.") }
+    number = words[flag + 1]
+    words.removeSubrange(flag...(flag + 1))
+  }
+  report(send(CubicleRequest(command: "rename", argument: words.joined(separator: " "), query: number)), command)
+
+case "alfred":
+  printAlfred(AlfredMenu.items(for: rest.joined(separator: " ")))
 
 case "move-workspace":
   let response = send(CubicleRequest(command: "move-workspace"))
