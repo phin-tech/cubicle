@@ -43,7 +43,7 @@ let usage = """
                         Add or remove an app on the ignore list (default: the focused window's app)
     layout [--all]      Show this workspace's bindings and stacks, or every workspace's bindings
     grid                Open the workspace grid
-    new-space           Add a workspace to every display (up to 16)
+    new-space           Add a workspace to every display
     pick-workspace      Click windows to put on a new workspace, then name it
     move-workspace      Move the workspace under the cursor, with its windows and name, to the next display
     help                Show this help

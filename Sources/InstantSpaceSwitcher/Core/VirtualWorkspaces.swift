@@ -30,11 +30,17 @@ extension Notification.Name {
 final class VirtualWorkspaces {
   static let shared = VirtualWorkspaces()
 
-  /// Workspaces per display (1 to 16, one per Space hotkey). `cubicle new-space` adds one.
+  /// Workspaces per display. It starts at 8 and has no upper limit: `cubicle new-space`, the walkthrough and a new
+  /// workspace from picked windows add one. A workspace that still has windows never disappears, whatever the
+  /// setting says. Only the first 16 have shortcuts of their own.
   var count: Int {
-    get { min(max(UserDefaults.standard.object(forKey: Self.countKey) as? Int ?? 9, 1), 16) }
+    get {
+      let setting = max(UserDefaults.standard.object(forKey: Self.countKey) as? Int ?? Self.defaultCount, 1)
+      let inUse = (members.values.map(\.workspace).max() ?? -1) + 1
+      return max(setting, inUse, (active.values.max() ?? -1) + 1)
+    }
     set {
-      UserDefaults.standard.set(min(max(newValue, 1), 16), forKey: Self.countKey)
+      UserDefaults.standard.set(max(newValue, 1), forKey: Self.countKey)
       NotificationCenter.default.post(name: .virtualWorkspaceDidChange, object: nil)
     }
   }
@@ -57,6 +63,7 @@ final class VirtualWorkspaces {
   }
 
   private static let countKey = "virtualWorkspaceCount"
+  private static let defaultCount = 8
   private var members: [UInt32: Member] = [:]
   private var active: [String: Int] = [:]
   private var previous: [String: Int] = [:]
@@ -343,8 +350,8 @@ final class VirtualWorkspaces {
     })
     guard
       let index = Self.unusedWorkspace(
-        count: count, occupied: occupied, used: used, showing: activeIndex(display), limit: 16)
-    else { return (false, "Every workspace is in use, and there can be at most 16.") }
+        count: count, occupied: occupied, used: used, showing: activeIndex(display))
+    else { return (false, "There's no workspace to use.") }
     if index == count { count += 1 }
 
     let key = Self.key(display, index)
@@ -374,14 +381,9 @@ final class VirtualWorkspaces {
   }
 
   /// The first workspace that has no windows, isn't `used` (named, or with a layout) and isn't showing; otherwise
-  /// `count`, meaning one more, as long as that stays under `limit`.
-  nonisolated static func unusedWorkspace(
-    count: Int, occupied: Set<Int>, used: Set<Int>, showing: Int, limit: Int
-  ) -> Int? {
-    if let free = (0..<count).first(where: { !occupied.contains($0) && !used.contains($0) && $0 != showing }) {
-      return free
-    }
-    return count < limit ? count : nil
+  /// `count`, meaning one more.
+  nonisolated static func unusedWorkspace(count: Int, occupied: Set<Int>, used: Set<Int>, showing: Int) -> Int? {
+    (0..<count).first { !occupied.contains($0) && !used.contains($0) && $0 != showing } ?? count
   }
 
   // MARK: - Sending
