@@ -3,7 +3,7 @@
 app = "Cubicle"
 bundle_id = "tech.phin.Cubicle"
 repo = "phin-tech/cubicle"
-description = "Instant, named, searchable Spaces for macOS"
+description = "Instant, named, searchable workspaces for macOS"
 team_id = "J35P7AJDN7"
 
 # Signing and notarizing secrets: the phin-tech-store project in Infisical (`infisical login`), as the store's apps use.
