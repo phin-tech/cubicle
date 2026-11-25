@@ -20,6 +20,9 @@ enum CommandHandler {
     case "move-workspace":
       let outcome = VirtualWorkspaces.shared.moveWorkspaceUnderCursorToNextDisplay()
       return CubicleResponse(ok: outcome.ok, message: outcome.message)
+    case "pick-workspace":
+      WindowPicker.shared.start()
+      return CubicleResponse(ok: true, message: "Click windows, then press Return to name the new workspace.")
     case "new-space":
       VirtualWorkspaces.shared.count += 1
       return CubicleResponse(ok: true, message: "Each display now has \(VirtualWorkspaces.shared.count) workspaces.")
