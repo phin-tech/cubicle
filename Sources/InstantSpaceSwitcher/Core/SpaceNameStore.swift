@@ -1,23 +1,11 @@
 import Foundation
 
-func stringFromCStringBuffer<T>(_ buffer: T) -> String {
-  var buffer = buffer
-  return withUnsafeBytes(of: &buffer) {
-    String(decoding: $0.prefix(while: { $0 != 0 }), as: UTF8.self)
-  }
-}
-
 struct SpaceIdentity: Equatable {
   let key: String?
 
-  init(displayIdentifier: String, record: SpaceRecord) {
-    if let uuid = UUID(uuidString: record.uuid) {
-      key = "space:\(uuid.uuidString)"
-    } else if record.uuid.isEmpty && record.isDefaultDesktop && !displayIdentifier.isEmpty {
-      key = "default:\(displayIdentifier.lowercased())"
-    } else {
-      key = nil
-    }
+  /// A workspace's identity (see `VirtualWorkspaces.key`).
+  init(key: String) {
+    self.key = key
   }
 }
 

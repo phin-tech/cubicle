@@ -1,17 +1,17 @@
 import AppKit
 import Combine
-import ISS
 
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
   private(set) var statusItem: NSStatusItem!
-  private var virtualDisplayItem: NSMenuItem?
   private var leftMenuItem: NSMenuItem?
   private var rightMenuItem: NSMenuItem?
   private var spacesMenuItem: NSMenuItem?
   private var moveWindowMenuItem: NSMenuItem?
+  private var moveWorkspaceMenuItem: NSMenuItem?
+  private var newWorkspaceMenuItem: NSMenuItem?
   private var stackingMenuItem: NSMenuItem?
-  private var cachedSpaceInfo: ISSSpaceInfo?
+  private var cachedSpaceInfo: WorkspaceInfo?
   private var refreshWorkItem: DispatchWorkItem?
   private var cancellables = Set<AnyCancellable>()
 
@@ -75,8 +75,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     menu.addItem(NSMenuItem.separator())
 
-    let spacesItem = NSMenuItem(title: "Spaces", action: nil, keyEquivalent: "")
-    let spacesSubmenu = NSMenu(title: "Spaces")
+    let spacesItem = NSMenuItem(title: "Workspaces", action: nil, keyEquivalent: "")
+    let spacesSubmenu = NSMenu(title: "Workspaces")
     spacesSubmenu.delegate = self
     spacesSubmenu.autoenablesItems = false
     spacesItem.submenu = spacesSubmenu
@@ -85,14 +85,28 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     menu.addItem(spacesItem)
     spacesMenuItem = spacesItem
 
-    let moveItem = NSMenuItem(title: "Move Current Window to Space", action: nil, keyEquivalent: "")
-    let moveSubmenu = NSMenu(title: "Move Current Window to Space")
+    let moveItem = NSMenuItem(title: "Move Current Window to Workspace", action: nil, keyEquivalent: "")
+    let moveSubmenu = NSMenu(title: "Move Current Window to Workspace")
     moveSubmenu.delegate = self
     moveSubmenu.autoenablesItems = false
     moveItem.submenu = moveSubmenu
     moveItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
     menu.addItem(moveItem)
     moveWindowMenuItem = moveItem
+
+    let moveWorkspace = NSMenuItem(
+      title: "Move Workspace to Next Display", action: #selector(moveWorkspaceToNextDisplay(_:)), keyEquivalent: "")
+    moveWorkspace.target = self
+    moveWorkspace.image = NSImage(systemSymbolName: "rectangle.2.swap", accessibilityDescription: nil)
+    menu.addItem(moveWorkspace)
+    moveWorkspaceMenuItem = moveWorkspace
+
+    let newWorkspace = NSMenuItem(
+      title: "New Workspace from Windows…", action: #selector(newWorkspaceFromWindows(_:)), keyEquivalent: "")
+    newWorkspace.target = self
+    newWorkspace.image = NSImage(systemSymbolName: "plus.rectangle.on.rectangle", accessibilityDescription: nil)
+    menu.addItem(newWorkspace)
+    newWorkspaceMenuItem = newWorkspace
 
     let stackingItem = NSMenuItem(title: "Stacking", action: nil, keyEquivalent: "")
     let stackingSubmenu = NSMenu(title: "Stacking")
@@ -104,12 +118,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     stackingMenuItem = stackingItem
 
     menu.addItem(NSMenuItem.separator())
-
-    let virtualItem = NSMenuItem(title: "Experimental Virtual Display", action: #selector(toggleVirtualDisplay(_:)), keyEquivalent: "")
-    virtualItem.target = self
-    virtualItem.image = NSImage(systemSymbolName: "display", accessibilityDescription: nil)
-    menu.addItem(virtualItem)
-    virtualDisplayItem = virtualItem
 
     let preferencesItem = NSMenuItem(
       title: "Settings…", action: #selector(openPreferences(_:)), keyEquivalent: ",")
@@ -148,34 +156,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     return menu
   }
 
-  private func updateVirtualDisplayItem() {
-    let display = VirtualDisplay.id
-    virtualDisplayItem?.state = display == 0 ? .off : .on
-    if display == 0 {
-      virtualDisplayItem?.title = "Experimental Virtual Display — Off"
-    } else {
-      let visible = NSScreen.screens.contains {
-        ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display
-      }
-      virtualDisplayItem?.title = "Experimental Virtual Display — \(visible ? "Ready" : "Unavailable")"
-    }
+  @objc private func newWorkspaceFromWindows(_ sender: Any?) {
+    // After the menu has closed, so its own click isn't caught.
+    DispatchQueue.main.async { WindowPicker.shared.start() }
   }
 
-  @objc private func toggleVirtualDisplay(_ sender: Any?) {
-    guard !VirtualDisplaySession.moving else { return }
-    VirtualDisplaySession.cancelCleanup()
-    if VirtualDisplay.id != 0 {
-      VirtualDisplay.remove()
-    } else if VirtualDisplay.ensure() == 0 {
-      let alert = NSAlert()
-      alert.messageText = "Could not create the virtual display"
-      alert.informativeText = "The experimental display API failed."
-      alert.runModal()
-    }
-    updateVirtualDisplayItem()
-    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-      self?.updateVirtualDisplayItem()
-    }
+  @objc private func moveWorkspaceToNextDisplay(_ sender: Any?) {
+    let outcome = VirtualWorkspaces.shared.moveWorkspaceUnderCursorToNextDisplay()
+    if !outcome.ok { NSSound.beep() }
+    let screenID = SpaceCatalog.shared.spacesUnderCursor()?.screenID ?? 0
+    OSDWindow.shared.show(message: outcome.message, screenID: screenID, force: true)
   }
 
   @objc private func switchLeft(_ sender: Any?) {
@@ -217,7 +207,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     delegate?.menuBarController(self, didRequestSwitchToSpaceAtIndex: targetIndex)
   }
 
-  func updateWithSpaceInfo(_ info: ISSSpaceInfo?) {
+  func updateWithSpaceInfo(_ info: WorkspaceInfo?) {
     cachedSpaceInfo = info
     updateMenuState()
   }
@@ -235,7 +225,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private func updateMenuState() {
     if let info = cachedSpaceInfo {
       leftMenuItem?.isEnabled = info.currentIndex > 0
-      rightMenuItem?.isEnabled = info.currentIndex + 1 < info.spaceCount
+      rightMenuItem?.isEnabled = info.currentIndex + 1 < info.count
     } else {
       leftMenuItem?.isEnabled = true
       rightMenuItem?.isEnabled = true
@@ -249,20 +239,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     guard let submenu = spacesMenuItem?.submenu else { return }
     submenu.removeAllItems()
 
-    guard let info = cachedSpaceInfo, info.spaceCount > 0 else {
-      let item = NSMenuItem(title: "No accessible spaces", action: nil, keyEquivalent: "")
+    guard let info = cachedSpaceInfo, info.count > 0 else {
+      let item = NSMenuItem(title: "No workspaces", action: nil, keyEquivalent: "")
       item.isEnabled = false
       submenu.addItem(item)
       return
     }
 
-    let count = Int(info.spaceCount)
     let store = HotkeyStore.shared
-    let displayIdentifier = stringFromCStringBuffer(info.displayID)
-    for index in 0..<count {
-      let identity = SpaceCatalog.shared.identity(
-        displayIdentifier: displayIdentifier, index: UInt32(index))
-      let title = SpaceNameStore.shared.name(for: identity?.key) ?? "Space \(index + 1)"
+    for index in 0..<info.count {
+      let key = VirtualWorkspaces.key(info.displayID, index)
+      let title = SpaceNameStore.shared.name(for: key) ?? "Workspace \(index + 1)"
       let item = NSMenuItem(title: title, action: #selector(switchToSpace(_:)), keyEquivalent: "")
       
       // Sync customized shortcuts
@@ -274,7 +261,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
       item.tag = index
       item.target = self
-      item.state = index == Int(info.currentIndex) ? .on : .off
+      item.state = index == info.currentIndex ? .on : .off
       submenu.addItem(item)
     }
   }
@@ -309,7 +296,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
       items = [NSMenuItem(title: "Needs Accessibility access", action: nil, keyEquivalent: "")]
     } else if let window = WindowMover.focusedWindow(), window.pid != ProcessInfo.processInfo.processIdentifier {
       items = WindowClickMenu.shared.sendItems(for: window)
-        ?? [NSMenuItem(title: "Can't read this display's Spaces", action: nil, keyEquivalent: "")]
+        ?? [NSMenuItem(title: "Can't read this display's workspaces", action: nil, keyEquivalent: "")]
     } else {
       items = [NSMenuItem(title: "No window to move", action: nil, keyEquivalent: "")]
     }
@@ -322,7 +309,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     submenu.removeAllItems()
     let store = StackingStore.shared
     let key = StackManager.shared.spaceKeyUnderCursor()
-    let here = NSMenuItem(title: "Pause on This Space", action: #selector(togglePauseHere(_:)), keyEquivalent: "")
+    let here = NSMenuItem(title: "Pause on This Workspace", action: #selector(togglePauseHere(_:)), keyEquivalent: "")
     here.target = self
     here.isEnabled = key != nil
     here.state = key.map { store.settings.pausedSpaces.contains($0) } == true ? .on : .off
@@ -356,7 +343,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     if let submenu = stackingMenuItem?.submenu, menu === submenu {
       return updateStackingMenu(submenu)
     }
-    updateVirtualDisplayItem()
+    if menu === statusItem.menu {
+      moveWorkspaceMenuItem?.isHidden = NSScreen.screens.count < 2
+    }
     if menu === statusItem.menu || menu === spacesMenuItem?.submenu {
       SpaceCatalog.shared.refresh()
       delegate?.menuBarControllerDidRequestRefresh(self)
@@ -392,9 +381,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   /// The current Space's custom name for the menu bar, or nil to show only the number badge.
   private func currentSpaceLabel() -> String? {
     guard MenuBarLabel.isEnabled, let info = cachedSpaceInfo else { return nil }
-    let identity = SpaceCatalog.shared.identity(
-      displayIdentifier: stringFromCStringBuffer(info.displayID), index: info.currentIndex)
-    return MenuBarLabel.title(forName: SpaceNameStore.shared.name(for: identity?.key))
+    let key = VirtualWorkspaces.key(info.displayID, info.currentIndex)
+    return MenuBarLabel.title(forName: SpaceNameStore.shared.name(for: key))
   }
 
   /// A small popover under the menu bar icon, so a new user can see where Cubicle lives.

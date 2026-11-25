@@ -14,6 +14,7 @@ public enum SnapAction: String, CaseIterable, Codable, Sendable {
   case bottomLeft = "bottom-left"
   case bottomRight = "bottom-right"
   case maximize
+  case fullScreen = "full-screen"
   case center
   case restore
 
@@ -30,6 +31,7 @@ public enum SnapAction: String, CaseIterable, Codable, Sendable {
     case "top", "up": self = .topHalf
     case "bottom", "down": self = .bottomHalf
     case "full", "max", "maximise": self = .maximize
+    case "fullscreen", "fs", "zen": self = .fullScreen
     case "centre": self = .center
     default: return nil
     }
@@ -46,13 +48,14 @@ public enum SnapAction: String, CaseIterable, Codable, Sendable {
     case .bottomLeft: return "Bottom Left Quarter"
     case .bottomRight: return "Bottom Right Quarter"
     case .maximize: return "Maximize"
+    case .fullScreen: return "Full Screen"
     case .center: return "Center"
     case .restore: return "Restore"
     }
   }
 
   /// The region as fractions of the usable area (x, y from the top-left, width, height), or nil for the snaps
-  /// without a fixed region.
+  /// without a fixed region. Full Screen covers the whole display rather than the usable area, so it has none.
   public var region: (x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat)? {
     switch self {
     case .leftHalf: return (0, 0, 0.5, 1)
@@ -64,7 +67,7 @@ public enum SnapAction: String, CaseIterable, Codable, Sendable {
     case .bottomLeft: return (0, 0.5, 0.5, 0.5)
     case .bottomRight: return (0.5, 0.5, 0.5, 0.5)
     case .maximize: return (0, 0, 1, 1)
-    case .center, .restore: return nil
+    case .fullScreen, .center, .restore: return nil
     }
   }
 
@@ -73,6 +76,7 @@ public enum SnapAction: String, CaseIterable, Codable, Sendable {
     switch self {
     case .topLeft, .topRight, .bottomLeft, .bottomRight: return ["quarter", "corner"]
     case .maximize: return ["full", "fill"]
+    case .fullScreen: return ["fullscreen", "zen", "hide menu bar", "dock"]
     case .center: return ["centre", "middle"]
     case .restore: return ["undo", "back", "original"]
     default: return ["half"]

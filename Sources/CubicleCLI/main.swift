@@ -6,42 +6,57 @@ let usage = """
 
   Commands:
     list [--here] [--json] [query]
-                        List Spaces (* marks the current one). --here limits it to the display under the
+                        List workspaces (* marks the current one). --here limits it to the display under the
                         cursor; a query keeps only fuzzy matches, best first.
     list --alfred [query]
-                        Same as --here, printed as Alfred Script Filter JSON (the current Space is left out)
-    go <name|number>    Switch to a Space by fuzzy name or one-based number
-    send [--quick-drag|--via-display|--via-virtual] [--stay] <name|number>  Move the focused window to a Space on its display, and go with it (experimental)
-    left | right        Switch one Space left or right
+                        Same as --here, printed as Alfred Script Filter JSON (the current workspace is left out)
+    go <name|number>    Switch to a workspace by fuzzy name or one-based number
+      send <name|number> [--window <id>|--app <name>|--previous]
+                        Move a window (the focused one by default) to a workspace on its display
+    left | right        Switch one workspace left or right
     snap <action> [--app <name>|--window <id>|--previous]
                         Move and resize a window: left-half, right-half, top-half, bottom-half, top-left,
                         top-right, bottom-left, bottom-right, maximize, center or restore. It acts on the
                         focused window (from Alfred or Raycast, the window you were in before), or on
                         another app's front window, a window by id, or the app you were in before this one.
-    windows [--json]    List the windows on the current Space, with the ids --window takes
+    windows [--json]    List the windows on the current workspace, with the ids --window takes
     actions [--json|--alfred] [query]
                         List the window commands; --alfred prints them for Alfred's "w" keyword
     gap [points]        Show or set the gap kept between snapped windows (0-100, default 0)
+    switch-style [name] Show or set how workspace switches hide window moves:
+                        none (default), black, freeze or black-freeze
 
   Stacking (snapping to a zone also puts the window in that zone's stack):
-    bind <zone|space> [--app <name>|--window <id>|--previous]
-                        Bind the window's app on its Space to a zone (left-half ... bottom-right, full), or
-                        to the Space only. Its windows, now and later, stack in that zone there.
-    bind-window <zone|space> [...]
+    bind <zone|workspace> [--app <name>|--window <id>|--previous]
+                        Bind the window's app on its workspace to a zone (left-half ... bottom-right, full), or
+                        to the workspace only. Its windows, now and later, stack in that zone there.
+    bind-window <zone|workspace> [...]
                         Bind just this window; it wins over its app's binding
     unbind | unbind-window [...]
-                        Remove the app's (or the window's) binding on the window's Space
+                        Remove the app's (or the window's) binding on the window's workspace
     cycle [next|prev] [...]
                         Bring the next or previous window in the window's stack to the front
     swap <left|right|up|down|zone> [...]
                         Swap the window's stack with the neighbouring zone's (or the named zone's)
     pause | resume [--all]
-                        Pause or resume stacking on the Space under the cursor, or everywhere
+                        Pause or resume stacking on the workspace under the cursor, or everywhere
     ignore | unignore [app] [...]
                         Add or remove an app on the ignore list (default: the focused window's app)
-    layout [--all]      Show this Space's bindings and stacks, or every Space's bindings
-    grid                Open the Space grid
-    new-space           Add a Space (Mission Control opens briefly)
+    layout [--all]      Show this workspace's bindings and stacks, or every workspace's bindings
+    grid                Open the workspace grid
+    new-space           Add a workspace to the display under the cursor
+    rename <name> [--number <n>]
+                        Name the workspace showing under the cursor (or workspace n); an empty name clears it
+    focus --window <id>|--app <name>
+                        Go to a window, switching to its workspace
+    new-workspace [name] [--window <id>|--app <name>|--previous]
+                        Put a window (the focused one by default) on a new workspace and go there
+    alfred [query]      The Alfred workflow's menu, as Script Filter JSON
+    remove-space [name|number]
+                        Remove a workspace on the display under the cursor (the current one if none is
+                        given). Its windows join the workspace before it; later ones move down a number.
+    pick-workspace      Click windows to put on a new workspace, then name it
+    move-workspace      Move the workspace under the cursor, with its windows and name, to the next display
     help                Show this help
 
   Commands run inside the Cubicle app, which holds the Accessibility permission, so this tool
@@ -83,7 +98,7 @@ func launchApp() -> Bool {
 /// Sends a request, starting Cubicle first if needed. `failure` decides how errors are reported.
 func send(_ request: CubicleRequest, failure: (String) -> Never = fail) -> CubicleResponse {
   // Moving a window waits for animated Space switches.
-  let timeout = ["send", "mc-dump"].contains(request.command) ? 15 : 5
+  let timeout = 5
   do {
     return try CubicleIPC.send(request, timeout: timeout)
   } catch CubicleIPCError.notRunning {
@@ -142,7 +157,7 @@ func printJSON<T: Encodable>(_ value: T) {
 
 func printWindows(_ windows: [CubicleWindowEntry]) {
   guard !windows.isEmpty else {
-    print("No windows on this Space.")
+    print("No windows on this workspace.")
     return
   }
   let width = windows.map { String($0.id).count }.max() ?? 1
@@ -175,6 +190,8 @@ struct AlfredItem: Encodable {
   var subtitle: String
   var arg: String?
   var valid: Bool
+  /// What Tab fills in after the keyword, to open a list.
+  var autocomplete: String? = nil
 }
 
 func printAlfred(_ items: [AlfredItem]) {
@@ -191,11 +208,11 @@ func alfredItems(for response: CubicleResponse) -> [AlfredItem] {
   // No uid on purpose: Alfred would re-rank by past use and bury our best-match-first order.
   let items = spaces.filter { !$0.isCurrent }.map {
     AlfredItem(
-      title: $0.name ?? "Space \($0.index)", subtitle: "\($0.display) · Space \($0.index)",
+      title: $0.name ?? "Workspace \($0.index)", subtitle: "\($0.display) · Workspace \($0.index)",
       arg: String($0.index), valid: true)
   }
   return items.isEmpty
-    ? [AlfredItem(title: "No other Spaces match", subtitle: "Nothing to switch to on this display", arg: nil, valid: false)]
+    ? [AlfredItem(title: "No other workspaces match", subtitle: "Nothing to switch to on this display", arg: nil, valid: false)]
     : items
 }
 
@@ -256,20 +273,62 @@ case "go":
   if let message = response.message { print(message) }
 
 case "send":
-  let query = rest.joined(separator: " ")
-  guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { fail("Usage: cubicle send <name|number>") }
-  let response = send(CubicleRequest(command: "send", argument: query))
-  guard response.ok else { fail(response.message ?? "send failed") }
+  let target = windowTarget(rest)
+  let query = target.rest.joined(separator: " ")
+  guard !query.trimmingCharacters(in: .whitespaces).isEmpty else {
+    fail("Usage: cubicle send <name|number> [--app <name>|--window <id>|--previous]")
+  }
+  report(send(CubicleRequest(
+    command: "send", argument: query, app: target.app, window: target.window,
+    previous: target.previous ? true : nil)), command)
+
+case "focus":
+  let target = windowTarget(rest)
+  guard target.rest.isEmpty, target.window != nil || target.app != nil || target.previous else {
+    fail("Usage: cubicle focus --window <id>|--app <name>|--previous")
+  }
+  report(send(CubicleRequest(
+    command: "focus", app: target.app, window: target.window, previous: target.previous ? true : nil)), command)
+
+case "new-workspace":
+  let target = windowTarget(rest)
+  report(send(CubicleRequest(
+    command: "new-workspace", argument: target.rest.joined(separator: " "), app: target.app, window: target.window,
+    previous: target.previous ? true : nil)), command)
+
+case "rename":
+  // `rename <name>` names the workspace showing under the cursor; `rename <name> --number 3` names another.
+  var words = rest
+  var number: String?
+  if let flag = words.firstIndex(of: "--number") {
+    guard words.indices.contains(flag + 1) else { fail("--number needs a workspace number.") }
+    number = words[flag + 1]
+    words.removeSubrange(flag...(flag + 1))
+  }
+  report(send(CubicleRequest(command: "rename", argument: words.joined(separator: " "), query: number)), command)
+
+case "alfred":
+  printAlfred(AlfredMenu.items(for: rest.joined(separator: " ")))
+
+case "move-workspace":
+  let response = send(CubicleRequest(command: "move-workspace"))
+  guard response.ok else { fail(response.message ?? "move-workspace failed") }
+  if let message = response.message { print(message) }
+
+case "pick-workspace":
+  let response = send(CubicleRequest(command: "pick-workspace"))
+  guard response.ok else { fail(response.message ?? "pick-workspace failed") }
+  if let message = response.message { print(message) }
+
+case "remove-space":
+  let response = send(CubicleRequest(command: "remove-space", argument: rest.joined(separator: " ")))
+  guard response.ok else { fail(response.message ?? "remove-space failed") }
   if let message = response.message { print(message) }
 
 case "new-space":
   let response = send(CubicleRequest(command: "new-space"))
   guard response.ok else { fail(response.message ?? "new-space failed") }
   if let message = response.message { print(message) }
-
-case "mc-dump":
-  let response = send(CubicleRequest(command: "mc-dump", argument: rest.first))
-  print(response.message ?? "")
 
 case "snap":
   let target = windowTarget(rest)
@@ -321,10 +380,16 @@ case "gap":
   guard response.ok else { fail(response.message ?? "gap failed") }
   if let message = response.message { print(rest.isEmpty ? "\(message) pt" : message) }
 
+case "switch-style":
+  guard rest.count <= 1 else { fail("Usage: cubicle switch-style [none|black|freeze|black-freeze]") }
+  let response = send(CubicleRequest(command: "switch-style", argument: rest.first))
+  guard response.ok else { fail(response.message ?? "switch-style failed") }
+  if let message = response.message { print(message) }
+
 case "bind", "bind-window":
   let target = windowTarget(rest)
   guard let name = target.rest.first, target.rest.count == 1 else {
-    fail("Usage: cubicle \(command) <zone|space> [--app <name>|--window <id>|--previous]\nZones: "
+    fail("Usage: cubicle \(command) <zone|workspace> [--app <name>|--window <id>|--previous]\nZones: "
       + Zone.allCases.map(\.rawValue).joined(separator: ", "))
   }
   report(send(CubicleRequest(

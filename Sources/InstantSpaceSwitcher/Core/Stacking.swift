@@ -130,6 +130,28 @@ final class StackingStore: ObservableObject {
   func setPausedEverywhere(_ paused: Bool) {
     save { $0.pausedEverywhere = paused }
   }
+
+  /// A workspace moved to another display: its bindings and its pause go with it. An app binding there for the
+  /// same app gives way, since an app has one app binding per workspace.
+  /// Forgets a removed workspace's bindings (window bindings too) and its pause.
+  func removeLayout(_ key: String) {
+    save { settings in
+      settings.bindings.removeAll { $0.spaceKey == key }
+      settings.pausedSpaces.remove(key)
+    }
+  }
+
+  func moveLayout(from old: String, to new: String) {
+    guard old != new else { return }
+    save { settings in
+      let moving = Set(settings.bindings.filter { $0.spaceKey == old && !$0.isWindowBinding }.map(\.bundleID))
+      settings.bindings.removeAll { $0.spaceKey == new && !$0.isWindowBinding && moving.contains($0.bundleID) }
+      for index in settings.bindings.indices where settings.bindings[index].spaceKey == old {
+        settings.bindings[index].spaceKey = new
+      }
+      if settings.pausedSpaces.remove(old) != nil { settings.pausedSpaces.insert(new) }
+    }
+  }
 }
 
 // MARK: - Live state

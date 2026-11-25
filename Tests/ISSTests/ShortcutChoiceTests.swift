@@ -90,13 +90,37 @@ final class AlfredWorkflowTests: XCTestCase {
     XCTAssertEqual(try infoPlist()["bundleid"] as? String, "tech.phin.cubicle.alfred")
   }
 
-  func testScriptFilterUsesTheAtKeywordWithoutASpace() throws {
+  private func scriptFilters() throws -> [[String: Any]] {
     let objects = try XCTUnwrap(try infoPlist()["objects"] as? [[String: Any]])
-    let filter = try XCTUnwrap(objects.first { $0["type"] as? String == "alfred.workflow.input.scriptfilter" })
-    let config = try XCTUnwrap(filter["config"] as? [String: Any])
-    XCTAssertEqual(config["keyword"] as? String, "@")
-    XCTAssertEqual(config["withspace"] as? Bool, false)
-    XCTAssertTrue((config["script"] as? String ?? "").contains("list --alfred"))
+    return objects.filter { $0["type"] as? String == "alfred.workflow.input.scriptfilter" }
+      .compactMap { $0["config"] as? [String: Any] }
+  }
+
+  /// The workflow is a shim: every keyword asks `cubicle alfred` for its items.
+  func testEveryScriptFilterAsksCubicle() throws {
+    let filters = try scriptFilters()
+    XCTAssertEqual(filters.count, 3)
+    for filter in filters {
+      XCTAssertTrue((filter["script"] as? String ?? "").contains("alfred \""), "\(filter["keyword"] ?? "?")")
+    }
+  }
+
+  /// Keywords come from Configure Workflow, with cb, @ and w as the defaults; @ needs no space (@mail).
+  func testKeywordsAreSettingsWithTheirDefaults() throws {
+    let settings = try XCTUnwrap(try infoPlist()["userconfigurationconfig"] as? [[String: Any]])
+    var defaults: [String: String] = [:]
+    for setting in settings {
+      let variable = try XCTUnwrap(setting["variable"] as? String)
+      defaults[variable] = (setting["config"] as? [String: Any])?["default"] as? String
+    }
+    var keywords: [String: Bool] = [:]
+    for filter in try scriptFilters() {
+      let keyword = try XCTUnwrap(filter["keyword"] as? String)
+      XCTAssertTrue(keyword.hasPrefix("{var:") && keyword.hasSuffix("}"), keyword)
+      let variable = String(keyword.dropFirst(5).dropLast())
+      keywords[try XCTUnwrap(defaults[variable], "no setting for \(variable)")] = filter["withspace"] as? Bool
+    }
+    XCTAssertEqual(keywords, ["cb": true, "@": false, "w": true])
   }
 
   func testEveryConnectionPointsAtARealObject() throws {

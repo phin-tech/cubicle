@@ -1,5 +1,4 @@
 import AppKit
-import ISS
 
 @MainActor
 final class OSDWindow {
@@ -14,11 +13,6 @@ final class OSDWindow {
   /// window). `duration` overrides the OSD duration setting, in seconds.
   func show(message: String, screenID: UInt32, force: Bool = false, duration: TimeInterval? = nil) {
     guard force || UserDefaults.standard.bool(forKey: "showOSD") else { return }
-    // Mission Control OSD suppression requires overlay detection enabled
-    let overlayDetectionEnabled = UserDefaults.standard.bool(forKey: "overlayDetectionEnabled")
-    if !force && overlayDetectionEnabled && iss_is_mission_control_active() && !UserDefaults.standard.bool(forKey: "showOSDInMissionControl") {
-      return
-    }
 
     let screen = screenID == 0 ? NSScreen.main : NSScreen.screens.first {
       ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == screenID

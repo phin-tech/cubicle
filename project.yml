@@ -9,8 +9,8 @@ settings:
   base:
     # The release version (`just release` tags v<this>); bump both for each release.
     # Starts at 0.0.0 so the first `just ship minor` releases 0.1.0.
-    MARKETING_VERSION: "0.3.0-beta.1"
-    CURRENT_PROJECT_VERSION: "9"
+    MARKETING_VERSION: "0.3.0-beta.5"
+    CURRENT_PROJECT_VERSION: "13"
     # Package.swift is tools-version 5.9, so the code is Swift 5 language mode.
     SWIFT_VERSION: "5.0"
 packages:
@@ -18,7 +18,7 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     exactVersion: 2.10.0
-  # Package.swift: the C event-tap core (ISS) and the socket layer shared with the CLI (CubicleIPC).
+  # Package.swift: the socket layer shared with the CLI (CubicleIPC).
   Cubicle:
     path: .
 targets:
@@ -36,8 +36,6 @@ targets:
       Debug: Signing.xcconfig
       Release: Signing.xcconfig
     dependencies:
-      - package: Cubicle
-        product: ISS
       - package: Cubicle
         product: CubicleIPC
       - package: Sparkle

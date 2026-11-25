@@ -1,11 +1,10 @@
 import AppKit
-import ISS
 
 enum MenuBarIconRenderer {
-  static func renderIcon(for info: ISSSpaceInfo) -> NSImage? {
+  static func renderIcon(for info: WorkspaceInfo) -> NSImage? {
     let iconSize: CGFloat = 18
     let cornerRadius: CGFloat = 6
-    let displayText = String(Int(info.currentIndex) + 1)
+    let displayText = String(info.currentIndex + 1)
 
     let image = NSImage(size: NSSize(width: iconSize, height: iconSize))
     image.lockFocus()

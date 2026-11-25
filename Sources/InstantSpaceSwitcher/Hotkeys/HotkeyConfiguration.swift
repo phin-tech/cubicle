@@ -116,7 +116,8 @@ struct HotkeyCombination: Codable, Equatable {
     keyEquivalent: " "
   )
 
-  /// Rectangle's default keys: ⌃⌥ plus arrows for halves, U I J K for quarters, Return, C and Delete.
+  /// Rectangle's default keys: ⌃⌥ plus arrows for halves, U I J K for quarters, Return, C and Delete. F is
+  /// Cubicle's own, for Full Screen.
   static func defaultSnap(_ action: SnapAction) -> HotkeyCombination {
     let keyCode: Int
     let displayKey: String
@@ -131,6 +132,7 @@ struct HotkeyCombination: Codable, Equatable {
     case .bottomLeft: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_J, "J", "j")
     case .bottomRight: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_K, "K", "k")
     case .maximize: (keyCode, displayKey, keyEquivalent) = (kVK_Return, "↩", "\r")
+    case .fullScreen: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_F, "F", "f")
     case .center: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_C, "C", "c")
     case .restore:
       (keyCode, displayKey, keyEquivalent) = (kVK_Delete, "⌫", String(Character(UnicodeScalar(NSBackspaceCharacter)!)))
@@ -449,14 +451,18 @@ enum HotkeyIdentifier: String, CaseIterable {
   case sendWindow
   case snapLeftHalf, snapRightHalf, snapTopHalf, snapBottomHalf
   case snapTopLeft, snapTopRight, snapBottomLeft, snapBottomRight
-  case snapMaximize, snapCenter, snapRestore
+  case snapMaximize, snapFullScreen, snapCenter, snapRestore
   case cycleNext, cyclePrevious
   case swapLeft, swapRight, swapUp, swapDown
   case togglePause
+  case moveWorkspaceToNextDisplay
+  case newWorkspaceFromWindows
 
   /// Off until you turn it on: moving windows is experimental, and the snap and stacking keys would take over ⌃⌥
   /// keys other apps use.
-  var enabledByDefault: Bool { self != .sendWindow && !Self.windowIdentifiers.contains(self) }
+  var enabledByDefault: Bool {
+    self == .newWorkspaceFromWindows || (self != .sendWindow && !Self.windowIdentifiers.contains(self))
+  }
 
   /// The stacking shortcuts (cycle, swap, pause).
   var isStacking: Bool {
@@ -488,6 +494,7 @@ enum HotkeyIdentifier: String, CaseIterable {
     case .snapBottomLeft: return .bottomLeft
     case .snapBottomRight: return .bottomRight
     case .snapMaximize: return .maximize
+    case .snapFullScreen: return .fullScreen
     case .snapCenter: return .center
     case .snapRestore: return .restore
     default: return nil
@@ -497,42 +504,50 @@ enum HotkeyIdentifier: String, CaseIterable {
   static var snapIdentifiers: [HotkeyIdentifier] { allCases.filter { $0.snapAction != nil } }
 
   /// The window shortcuts, kept in one dictionary: the snaps and the stacking ones.
-  static var windowIdentifiers: [HotkeyIdentifier] { allCases.filter { $0.snapAction != nil || $0.isStacking } }
+  static var windowIdentifiers: [HotkeyIdentifier] {
+    allCases.filter {
+      $0.snapAction != nil || $0.isStacking || $0 == .moveWorkspaceToNextDisplay || $0 == .newWorkspaceFromWindows
+    }
+  }
 
   /// The shortcuts Settings and the walkthrough turn on and off together. Pause has its own switch: it changes
   /// what Cubicle does rather than acting once.
-  static var windowShortcutGroup: [HotkeyIdentifier] { windowIdentifiers.filter { $0 != .togglePause } }
+  static var windowShortcutGroup: [HotkeyIdentifier] {
+    windowIdentifiers.filter { ![.togglePause, .moveWorkspaceToNextDisplay, .newWorkspaceFromWindows].contains($0) }
+  }
 
   var displayName: String {
     switch self {
-    case .left: return "Switch to space on the left"
-    case .right: return "Switch to space on the right"
-    case .space1: return "Switch to space 1"
-    case .space2: return "Switch to space 2"
-    case .space3: return "Switch to space 3"
-    case .space4: return "Switch to space 4"
-    case .space5: return "Switch to space 5"
-    case .space6: return "Switch to space 6"
-    case .space7: return "Switch to space 7"
-    case .space8: return "Switch to space 8"
-    case .space9: return "Switch to space 9"
-    case .space10: return "Switch to space 10"
-    case .space11: return "Switch to space 11"
-    case .space12: return "Switch to space 12"
-    case .space13: return "Switch to space 13"
-    case .space14: return "Switch to space 14"
-    case .space15: return "Switch to space 15"
-    case .space16: return "Switch to space 16"
-    case .lastSpace: return "Switch to last used space"
-    case .showGrid: return "Show space grid"
-    case .sendWindow: return "Send window to space…"
+    case .left: return "Switch to workspace on the left"
+    case .right: return "Switch to workspace on the right"
+    case .space1: return "Switch to workspace 1"
+    case .space2: return "Switch to workspace 2"
+    case .space3: return "Switch to workspace 3"
+    case .space4: return "Switch to workspace 4"
+    case .space5: return "Switch to workspace 5"
+    case .space6: return "Switch to workspace 6"
+    case .space7: return "Switch to workspace 7"
+    case .space8: return "Switch to workspace 8"
+    case .space9: return "Switch to workspace 9"
+    case .space10: return "Switch to workspace 10"
+    case .space11: return "Switch to workspace 11"
+    case .space12: return "Switch to workspace 12"
+    case .space13: return "Switch to workspace 13"
+    case .space14: return "Switch to workspace 14"
+    case .space15: return "Switch to workspace 15"
+    case .space16: return "Switch to workspace 16"
+    case .lastSpace: return "Switch to last used workspace"
+    case .showGrid: return "Show workspace grid"
+    case .sendWindow: return "Send window to workspace…"
     case .cycleNext: return "Stack: next window"
     case .cyclePrevious: return "Stack: previous window"
     case .swapLeft: return "Stack: swap with zone on the left"
     case .swapRight: return "Stack: swap with zone on the right"
     case .swapUp: return "Stack: swap with zone above"
     case .swapDown: return "Stack: swap with zone below"
-    case .togglePause: return "Stack: pause or resume this Space"
+    case .togglePause: return "Stack: pause or resume this workspace"
+    case .moveWorkspaceToNextDisplay: return "Move workspace to the next display"
+    case .newWorkspaceFromWindows: return "New workspace from picked windows…"
     default: return "Snap window: \(snapAction!.displayName)"
     }
   }
@@ -874,6 +889,14 @@ extension HotkeyIdentifier {
     case .lastSpace: return .defaultLastSpace
     case .showGrid: return .defaultShowGrid
     case .sendWindow: return .defaultSendWindow
+    case .moveWorkspaceToNextDisplay:
+      return HotkeyCombination(
+        keyCode: UInt32(kVK_ANSI_M), modifiers: UInt32(controlKey | optionKey | cmdKey), displayKey: "M",
+        keyEquivalent: "m")
+    case .newWorkspaceFromWindows:
+      return HotkeyCombination(
+        keyCode: UInt32(kVK_ANSI_N), modifiers: UInt32(controlKey | optionKey | cmdKey), displayKey: "N",
+        keyEquivalent: "n")
     default:
       if let snapAction { return .defaultSnap(snapAction) }
       if isStacking { return .defaultStacking(self) }

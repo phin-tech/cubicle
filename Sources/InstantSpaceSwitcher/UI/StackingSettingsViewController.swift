@@ -94,8 +94,8 @@ final class StackingSettingsViewController: NSViewController {
       for space in display.spaces {
         guard let key = space.identity.key else { continue }
         shown.insert(key)
-        let title = SpaceNameStore.shared.name(for: key).map { "Space \(space.index + 1): \($0)" }
-          ?? "Space \(space.index + 1)"
+        let title = SpaceNameStore.shared.name(for: key).map { "Workspace \(space.index + 1): \($0)" }
+          ?? "Workspace \(space.index + 1)"
         let pause = NSButton(checkboxWithTitle: "Paused", target: self, action: #selector(pauseChanged(_:)))
         pause.identifier = NSUserInterfaceItemIdentifier(key)
         pause.state = settings.pausedSpaces.contains(key) ? .on : .off
@@ -109,7 +109,7 @@ final class StackingSettingsViewController: NSViewController {
     // Bindings saved for Spaces that have since been removed stay until removed here.
     let orphans = settings.bindings.filter { !shown.contains($0.spaceKey) }
     if !orphans.isEmpty {
-      add(heading("Spaces that no longer exist"))
+      add(heading("Workspaces that no longer exist"))
       showBindings(orphans)
     }
 
@@ -128,7 +128,7 @@ final class StackingSettingsViewController: NSViewController {
       return
     }
     for binding in bindings {
-      let zone = NSTextField(labelWithString: binding.zone?.displayName ?? "Space only")
+      let zone = NSTextField(labelWithString: binding.zone?.displayName ?? "Workspace only")
       zone.textColor = .secondaryLabelColor
       zone.widthAnchor.constraint(equalToConstant: 150).isActive = true
       let name = NSTextField(labelWithString: binding.label)

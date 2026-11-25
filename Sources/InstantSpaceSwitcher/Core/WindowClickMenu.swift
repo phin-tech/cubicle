@@ -203,7 +203,7 @@ final class WindowClickMenu: NSObject {
     for zone in Zone.allCases {
       add(zone.displayName, .bind(zone, window: wholeWindow), checked: binding != nil && binding?.zone == zone)
     }
-    add("This Space Only (No Zone)", .bind(nil, window: wholeWindow), checked: binding != nil && binding?.zone == nil)
+    add("This Workspace Only (No Zone)", .bind(nil, window: wholeWindow), checked: binding != nil && binding?.zone == nil)
     if binding != nil {
       submenu.addItem(.separator())
       add("Remove Binding", .unbind(window: wholeWindow), checked: false)
@@ -265,7 +265,7 @@ final class WindowClickMenu: NSObject {
     guard let choice = sender.representedObject as? Choice else { return }
     // Let the menu finish closing before the move starts grabbing and switching.
     DispatchQueue.main.async {
-      WindowSender.sendShowingProgress(choice.window, toIndex: choice.index, screenID: choice.screenID)
+      WindowSender.sendShowingResult(choice.window, toIndex: choice.index, screenID: choice.screenID)
     }
   }
 }

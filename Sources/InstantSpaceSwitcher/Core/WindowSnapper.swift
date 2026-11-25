@@ -60,6 +60,30 @@ enum WindowSnapper {
     }
     let name = window.displayName
 
+    // Full Screen again, or any other snap, takes a full-screen window out. The menu bar may come back, and the
+    // usable area only shrinks once Cubicle hears about it, so a snap that needs it waits a moment.
+    if FullScreen.shared.contains(window.windowID) {
+      let action = action == .fullScreen ? SnapAction.restore : action
+      if FullScreen.shared.leave(window.windowID) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { snap(action, window) }
+        return Outcome(ok: true, message: action == .restore ? "\(name) left full screen." : "\(action.displayName): \(name).")
+      }
+      if action == .restore { return snap(action, window) }
+    }
+
+    if action == .fullScreen {
+      guard let screen = screenFrame(containing: current) else {
+        return Outcome(ok: false, message: "Could not find the display \(name) is on.")
+      }
+      FullScreen.shared.enter(window.windowID)
+      history.willSnap(window.windowID, from: current)
+      let result = apply(screen, to: window, visible: screen, gap: 0, align: false)
+      history.didSnap(window.windowID, to: result ?? screen)
+      pruneHistory()
+      StackManager.shared.didSnap(window, action: action, frame: result ?? screen)
+      return Outcome(ok: true, message: "Full Screen: \(name).")
+    }
+
     if action == .restore {
       guard let restore = history.takeRestore(window.windowID) else {
         // Restore still lets go of the window.
@@ -117,6 +141,12 @@ enum WindowSnapper {
     history.didSnap(window.windowID, to: result ?? target)
     pruneHistory()
     return result
+  }
+
+  /// Puts a window at `frame` exactly, without the alignment a snap does.
+  static func setFrame(_ frame: CGRect, of window: WindowMover.Target) {
+    setTimeout(on: window)
+    apply(frame, to: window, visible: frame, gap: 0, align: false)
   }
 
   /// Why Cubicle won't touch this window, if it won't.
@@ -206,6 +236,16 @@ enum WindowSnapper {
     return SnapGeometry.flipped(screens[index].visibleFrame, primaryHeight: height)
   }
 
+  /// The whole display holding most of `rect`, menu bar and Dock included, in top-left-origin coordinates.
+  static func screenFrame(containing rect: CGRect) -> CGRect? {
+    let screens = NSScreen.screens
+    guard let primary = screens.first else { return nil }
+    let frames = screens.map { SnapGeometry.flipped($0.frame, primaryHeight: primary.frame.height) }
+    let fallback = NSScreen.main.flatMap { screens.firstIndex(of: $0) } ?? 0
+    guard let index = SnapGeometry.screenIndex(for: rect, screens: frames, fallback: fallback) else { return nil }
+    return frames[index]
+  }
+
   // MARK: - Finding the window
 
   enum Failure: Error {
@@ -217,8 +257,8 @@ enum WindowSnapper {
     var message: String {
       switch self {
       case .noApp(let name): return "No running app matches '\(name)'."
-      case .noWindow(let name): return "\(name) has no window on this Space."
-      case .unknownWindow(let id): return "No window \(id) on this Space. `cubicle windows` lists them."
+      case .noWindow(let name): return "\(name) has no window on this workspace."
+      case .unknownWindow(let id): return "No window \(id) on this workspace. `cubicle windows` lists them."
       case .noPrevious: return "There is no previous app yet."
       }
     }
@@ -301,7 +341,7 @@ enum WindowSnapper {
     return value as? [AXUIElement] ?? []
   }
 
-  /// Every standard window on the current Space, front app first.
+  /// Every window, on every workspace, front app first.
   static func listWindows() -> [CubicleWindowEntry] {
     let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
     let apps = regularApps().sorted { ($0.processIdentifier == front ? 0 : 1) < ($1.processIdentifier == front ? 0 : 1) }
@@ -319,13 +359,19 @@ enum WindowSnapper {
         guard string(window, kAXRoleAttribute) == kAXWindowRole as String,
           let target = WindowMover.target(for: window)
         else { continue }
+        let placement = VirtualWorkspaces.shared.placement(of: target.windowID)
+        let workspaceName = placement.flatMap {
+          SpaceNameStore.shared.name(for: VirtualWorkspaces.key($0.display.uuid, $0.index))
+        }
         entries.append(
           CubicleWindowEntry(
             id: target.windowID, app: app.localizedName ?? "?", bundleID: app.bundleIdentifier,
             title: target.title, x: target.frame.minX, y: target.frame.minY, width: target.frame.width,
             height: target.frame.height,
             isFocused: app.processIdentifier == front && focusedID == target.windowID,
-            isMinimized: bool(window, kAXMinimizedAttribute) == true))
+            isMinimized: bool(window, kAXMinimizedAttribute) == true,
+            workspace: placement.map { $0.index + 1 }, workspaceName: workspaceName,
+            display: placement?.display.name, isShowing: placement?.showing))
       }
     }
     return entries

@@ -68,7 +68,7 @@ public enum Zone: String, CaseIterable, Codable, Sendable {
 }
 
 extension SnapAction {
-  /// The zone a snap puts a window in. Center and Restore have none: they let go of the window.
+  /// The zone a snap puts a window in. Full Screen, Center and Restore have none: they let go of the window.
   public var zone: Zone? {
     switch self {
     case .leftHalf: return .leftHalf
@@ -80,7 +80,7 @@ extension SnapAction {
     case .bottomLeft: return .bottomLeft
     case .bottomRight: return .bottomRight
     case .maximize: return .full
-    case .center, .restore: return nil
+    case .fullScreen, .center, .restore: return nil
     }
   }
 }

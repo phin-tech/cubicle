@@ -6,11 +6,24 @@
 	<string>tech.phin.cubicle.alfred</string>
 	<key>connections</key>
 	<dict>
+		<key>5E0A4F1D-2B3C-4D7F-8A6B-0F1C2D3E4F50</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>9C4E8D5B-6F7A-4B1D-8E0F-4D5A6B7C8D94</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
 		<key>6F1B5A2E-3C4D-4E8A-9B7C-1A2D3E4F5A61</key>
 		<array>
 			<dict>
 				<key>destinationuid</key>
-				<string>7A2C6B3F-4D5E-4F9B-8C8D-2B3E4F5A6B72</string>
+				<string>9C4E8D5B-6F7A-4B1D-8E0F-4D5A6B7C8D94</string>
 				<key>modifiers</key>
 				<integer>0</integer>
 				<key>modifiersubtext</key>
@@ -32,11 +45,24 @@
 				<false/>
 			</dict>
 		</array>
+		<key>9C4E8D5B-6F7A-4B1D-8E0F-4D5A6B7C8D94</key>
+		<array>
+			<dict>
+				<key>destinationuid</key>
+				<string>AD5F9E6C-7A8B-4C2E-9F1A-5E6B7C8D9EA5</string>
+				<key>modifiers</key>
+				<integer>0</integer>
+				<key>modifiersubtext</key>
+				<string></string>
+				<key>vitoclose</key>
+				<false/>
+			</dict>
+		</array>
 	</dict>
 	<key>createdby</key>
 	<string>Sam</string>
 	<key>description</key>
-	<string>Jump to a Space by name and snap windows with Cubicle</string>
+	<string>Workspaces and windows with Cubicle: go, send, snap, rename, add and remove</string>
 	<key>disabled</key>
 	<false/>
 	<key>name</key>
@@ -59,7 +85,7 @@
 				<key>escaping</key>
 				<integer>102</integer>
 				<key>keyword</key>
-				<string>@</string>
+				<string>{var:keyword}</string>
 				<key>queuedelaycustom</key>
 				<integer>1</integer>
 				<key>queuedelayimmediatelyinitially</key>
@@ -69,59 +95,35 @@
 				<key>queuemode</key>
 				<integer>2</integer>
 				<key>runningsubtext</key>
-				<string>Asking Cubicle...</string>
+				<string>Asking Cubicle…</string>
 				<key>script</key>
 				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/Helpers/cubicle)"
 if [ ! -x "$CUBICLE" ]; then
-  printf '{"items":[{"title":"Cubicle is not installed","subtitle":"Run: just install","valid":false}]}'
+  printf '{"items":[{"title":"Cubicle is not installed","subtitle":"Install Cubicle, or run: just install","valid":false}]}'
   exit 0
 fi
-exec "$CUBICLE" list --alfred "$1"</string>
+# The menu is made by cubicle itself (cubicle alfred); this only passes the query on.
+exec "$CUBICLE" alfred "$1"</string>
 				<key>scriptargtype</key>
 				<integer>1</integer>
 				<key>scriptfile</key>
 				<string></string>
 				<key>subtext</key>
-				<string>Fuzzy-search the Spaces on this display</string>
+				<string>Workspaces and windows: go, send, snap, rename…</string>
 				<key>title</key>
-				<string>Cubicle: go to Space</string>
+				<string>Cubicle</string>
 				<key>type</key>
 				<integer>0</integer>
 				<key>withspace</key>
-				<false/>
+				<true/>
 			</dict>
 			<key>type</key>
 			<string>alfred.workflow.input.scriptfilter</string>
 			<key>uid</key>
-			<string>6F1B5A2E-3C4D-4E8A-9B7C-1A2D3E4F5A61</string>
+			<string>5E0A4F1D-2B3C-4D7F-8A6B-0F1C2D3E4F50</string>
 			<key>version</key>
 			<integer>3</integer>
-		</dict>
-		<dict>
-			<key>config</key>
-			<dict>
-				<key>concurrently</key>
-				<false/>
-				<key>escaping</key>
-				<integer>102</integer>
-				<key>script</key>
-				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/Helpers/cubicle)"
-exec "$CUBICLE" go "$1"</string>
-				<key>scriptargtype</key>
-				<integer>1</integer>
-				<key>scriptfile</key>
-				<string></string>
-				<key>type</key>
-				<integer>0</integer>
-			</dict>
-			<key>type</key>
-			<string>alfred.workflow.action.script</string>
-			<key>uid</key>
-			<string>7A2C6B3F-4D5E-4F9B-8C8D-2B3E4F5A6B72</string>
-			<key>version</key>
-			<integer>2</integer>
 		</dict>
 		<dict>
 			<key>config</key>
@@ -139,7 +141,7 @@ exec "$CUBICLE" go "$1"</string>
 				<key>escaping</key>
 				<integer>102</integer>
 				<key>keyword</key>
-				<string>w</string>
+				<string>{var:go_keyword}</string>
 				<key>queuedelaycustom</key>
 				<integer>1</integer>
 				<key>queuedelayimmediatelyinitially</key>
@@ -149,23 +151,80 @@ exec "$CUBICLE" go "$1"</string>
 				<key>queuemode</key>
 				<integer>2</integer>
 				<key>runningsubtext</key>
-				<string></string>
+				<string>Asking Cubicle…</string>
 				<key>script</key>
 				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/Helpers/cubicle)"
 if [ ! -x "$CUBICLE" ]; then
-  printf '{"items":[{"title":"Cubicle is not installed","subtitle":"Run: just install","valid":false}]}'
+  printf '{"items":[{"title":"Cubicle is not installed","subtitle":"Install Cubicle, or run: just install","valid":false}]}'
   exit 0
 fi
-exec "$CUBICLE" actions --alfred "$1"</string>
+# The menu is made by cubicle itself (cubicle alfred); this only passes the query on.
+exec "$CUBICLE" alfred "go $1"</string>
 				<key>scriptargtype</key>
 				<integer>1</integer>
 				<key>scriptfile</key>
 				<string></string>
 				<key>subtext</key>
-				<string>Snap the window you were in: left, top right, maximize, restore…</string>
+				<string>Fuzzy-search the workspaces on this display</string>
 				<key>title</key>
-				<string>Cubicle: window commands</string>
+				<string>Cubicle: go to workspace</string>
+				<key>type</key>
+				<integer>0</integer>
+				<key>withspace</key>
+				<false/>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.input.scriptfilter</string>
+			<key>uid</key>
+			<string>6F1B5A2E-3C4D-4E8A-9B7C-1A2D3E4F5A61</string>
+			<key>version</key>
+			<integer>3</integer>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>alfredfiltersresults</key>
+				<false/>
+				<key>alfredfiltersresultsmatchmode</key>
+				<integer>0</integer>
+				<key>argumenttreatemptyqueryasnil</key>
+				<false/>
+				<key>argumenttrimmode</key>
+				<integer>0</integer>
+				<key>argumenttype</key>
+				<integer>1</integer>
+				<key>escaping</key>
+				<integer>102</integer>
+				<key>keyword</key>
+				<string>{var:snap_keyword}</string>
+				<key>queuedelaycustom</key>
+				<integer>1</integer>
+				<key>queuedelayimmediatelyinitially</key>
+				<true/>
+				<key>queuedelaymode</key>
+				<integer>0</integer>
+				<key>queuemode</key>
+				<integer>2</integer>
+				<key>runningsubtext</key>
+				<string>Asking Cubicle…</string>
+				<key>script</key>
+				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/Helpers/cubicle)"
+if [ ! -x "$CUBICLE" ]; then
+  printf '{"items":[{"title":"Cubicle is not installed","subtitle":"Install Cubicle, or run: just install","valid":false}]}'
+  exit 0
+fi
+# The menu is made by cubicle itself (cubicle alfred); this only passes the query on.
+exec "$CUBICLE" alfred "snap $1"</string>
+				<key>scriptargtype</key>
+				<integer>1</integer>
+				<key>scriptfile</key>
+				<string></string>
+				<key>subtext</key>
+				<string>Snap the window you were in</string>
+				<key>title</key>
+				<string>Cubicle: snap window</string>
 				<key>type</key>
 				<integer>0</integer>
 				<key>withspace</key>
@@ -188,8 +247,13 @@ exec "$CUBICLE" actions --alfred "$1"</string>
 				<key>script</key>
 				<string>export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 CUBICLE="$(command -v cubicle || echo /Applications/Cubicle.app/Contents/Helpers/cubicle)"
-# The argument is "snap &lt;action&gt;", made by cubicle actions --alfred; split it into words on purpose.
-exec "$CUBICLE" $1</string>
+if [ ! -x "$CUBICLE" ]; then
+  echo "Cubicle is not installed."
+  exit 0
+fi
+# Each item's arg is a cubicle command line with its arguments separated by tabs.
+IFS=$'\t' read -r -a parts &lt;&lt;&lt; "$1"
+"$CUBICLE" "${parts[@]}" 2&gt;&amp;1</string>
 				<key>scriptargtype</key>
 				<integer>1</integer>
 				<key>scriptfile</key>
@@ -204,35 +268,63 @@ exec "$CUBICLE" $1</string>
 			<key>version</key>
 			<integer>2</integer>
 		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>lastpathcomponent</key>
+				<false/>
+				<key>onlyshowifquerypopulated</key>
+				<true/>
+				<key>removeextension</key>
+				<false/>
+				<key>text</key>
+				<string>{query}</string>
+				<key>title</key>
+				<string>Cubicle</string>
+			</dict>
+			<key>type</key>
+			<string>alfred.workflow.output.notification</string>
+			<key>uid</key>
+			<string>AD5F9E6C-7A8B-4C2E-9F1A-5E6B7C8D9EA5</string>
+			<key>version</key>
+			<integer>1</integer>
+		</dict>
 	</array>
 	<key>readme</key>
-	<string>Type "@" and part of a Space's name to jump to it (for example @ino). Matching is fuzzy (ino finds innopts) and lists only the Spaces on the display your cursor is on, leaving out the one you are already on. The number of a Space also works.
+	<string>Everything in this workflow comes from the cubicle command itself (cubicle alfred), so it never goes out of date: update Cubicle and the menu updates with it.
 
-Type "w" and a window command to snap the window you were in (for example w left, w top right, w max, w restore).
+cb opens the menu. Tab opens a section:
+- cb windows: every window on every workspace. Return goes to it; Tab lists where to send it, or type a name for a new workspace.
+- cb go / cb send / cb snap / cb rename / cb remove, plus New Workspace from Windows, Add a Workspace, Move Workspace to Next Display and the grid.
+- Anything else you type searches the menu and your windows at once.
 
-Needs the cubicle command: run "just install" in the Cubicle repo (links it to ~/.local/bin and installs the app).</string>
+@ and a name jumps to a workspace (@mail). w and a command snaps the window you were in (w left, w max).
+
+The three keywords can be changed in the workflow's Configure Workflow sheet.
+
+Needs Cubicle installed (it brings the cubicle command; run "just install" from the repo to link it to ~/.local/bin).</string>
 	<key>uidata</key>
 	<dict>
-		<key>6F1B5A2E-3C4D-4E8A-9B7C-1A2D3E4F5A61</key>
+		<key>5E0A4F1D-2B3C-4D7F-8A6B-0F1C2D3E4F50</key>
 		<dict>
 			<key>xpos</key>
 			<real>50.0</real>
 			<key>ypos</key>
 			<real>50.0</real>
 		</dict>
-		<key>7A2C6B3F-4D5E-4F9B-8C8D-2B3E4F5A6B72</key>
+		<key>6F1B5A2E-3C4D-4E8A-9B7C-1A2D3E4F5A61</key>
 		<dict>
 			<key>xpos</key>
-			<real>300.0</real>
-			<key>ypos</key>
 			<real>50.0</real>
+			<key>ypos</key>
+			<real>200.0</real>
 		</dict>
 		<key>8B3D7C4A-5E6F-4A0C-9D9E-3C4F5A6B7C83</key>
 		<dict>
 			<key>xpos</key>
 			<real>50.0</real>
 			<key>ypos</key>
-			<real>200.0</real>
+			<real>350.0</real>
 		</dict>
 		<key>9C4E8D5B-6F7A-4B1D-8E0F-4D5A6B7C8D94</key>
 		<dict>
@@ -241,11 +333,84 @@ Needs the cubicle command: run "just install" in the Cubicle repo (links it to ~
 			<key>ypos</key>
 			<real>200.0</real>
 		</dict>
+		<key>AD5F9E6C-7A8B-4C2E-9F1A-5E6B7C8D9EA5</key>
+		<dict>
+			<key>xpos</key>
+			<real>500.0</real>
+			<key>ypos</key>
+			<real>200.0</real>
+		</dict>
 	</dict>
+	<key>userconfigurationconfig</key>
+	<array>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>cb</string>
+				<key>placeholder</key>
+				<string>cb</string>
+				<key>required</key>
+				<true/>
+				<key>trim</key>
+				<true/>
+			</dict>
+			<key>description</key>
+			<string>Opens Cubicle's menu: windows, workspaces, snapping and more.</string>
+			<key>label</key>
+			<string>Menu keyword</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>keyword</string>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>@</string>
+				<key>placeholder</key>
+				<string>@</string>
+				<key>required</key>
+				<true/>
+				<key>trim</key>
+				<true/>
+			</dict>
+			<key>description</key>
+			<string>Jumps straight to a workspace by name (no space needed: @mail).</string>
+			<key>label</key>
+			<string>Go keyword</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>go_keyword</string>
+		</dict>
+		<dict>
+			<key>config</key>
+			<dict>
+				<key>default</key>
+				<string>w</string>
+				<key>placeholder</key>
+				<string>w</string>
+				<key>required</key>
+				<true/>
+				<key>trim</key>
+				<true/>
+			</dict>
+			<key>description</key>
+			<string>Snaps the window you were in (w left, w max).</string>
+			<key>label</key>
+			<string>Snap keyword</string>
+			<key>type</key>
+			<string>textfield</string>
+			<key>variable</key>
+			<string>snap_keyword</string>
+		</dict>
+	</array>
 	<key>variablesdontexport</key>
 	<array/>
 	<key>version</key>
-	<string>1.0</string>
+	<string>2.0</string>
 	<key>webaddress</key>
 	<string>https://github.com/sam-phinizy/Cubicle</string>
 </dict>

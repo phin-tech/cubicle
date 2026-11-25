@@ -1,5 +1,4 @@
 import AppKit
-import ISS
 
 struct SpaceGridCell: Equatable {
   let index: Int
@@ -99,11 +98,9 @@ enum SpaceGridLayout {
   }
 }
 
-/// A summoned overlay showing the Spaces of the display under the cursor.
-///
-/// `iss_switch_to_index` acts on the display under the cursor, so the grid is limited to that display
-/// (see issue #43 for why other displays cannot be targeted yet). In send mode it shows the Spaces of the
-/// focused window's display instead, and picking one moves the window there.
+/// A summoned overlay showing the workspaces of the display under the cursor, the display a switch acts on. In
+/// send mode it shows the workspaces of the focused window's display instead, and picking one moves the window
+/// there.
 @MainActor
 final class SpaceGridWindow {
   static let shared = SpaceGridWindow()
@@ -123,7 +120,7 @@ final class SpaceGridWindow {
     guard AXIsProcessTrusted() else { return Self.report("Accessibility is not granted to Cubicle.") }
     guard let window = WindowMover.focusedWindow() else { return Self.report("Could not find the focused window.") }
     guard let spaces = WindowSender.spaces(for: window) else {
-      return Self.report("Could not read the Spaces on the window's display.")
+      return Self.report("Could not read the workspaces on the window's display.")
     }
     present(spaces, sending: window)
   }
@@ -133,23 +130,24 @@ final class SpaceGridWindow {
     panel = nil
   }
 
-  func show() {
+  func show(selecting selection: Int? = nil) {
     guard let spaces = SpaceCatalog.shared.spacesUnderCursor() else {
       NSSound.beep()
       return
     }
-    present(spaces, sending: nil)
+    present(spaces, sending: nil, selecting: selection)
   }
 
   /// `sending` is the window send mode moves; without it, the grid switches Spaces, and ⇧Return sends the
   /// focused window instead.
-  private func present(_ spaces: DisplaySpaces, sending: WindowMover.Target?) {
+  private func present(_ spaces: DisplaySpaces, sending: WindowMover.Target?, selecting selection: Int? = nil) {
     let screen = Self.screen(for: spaces.screenID) ?? NSScreen.main
     guard let screen else { return }
 
     close()
     let view = SpaceGridView(
-      cells: Self.cells(for: spaces), currentIndex: spaces.currentIndex, sendingName: sending?.displayName)
+      cells: Self.cells(for: spaces), currentIndex: spaces.currentIndex, sendingName: sending?.displayName,
+      selected: selection)
     view.onActivate = { [weak self] index, send in
       guard let self else { return }
       self.close()
@@ -157,11 +155,34 @@ final class SpaceGridWindow {
         self.send(sending, toIndex: index, spaces: spaces)
       } else {
         DispatchQueue.main.async {
-          if !iss_switch_to_index(UInt32(index)) { NSSound.beep() }
+          if !VirtualWorkspaces.shared.switchUnderCursor(toIndex: index) { NSSound.beep() }
         }
       }
     }
     view.onCancel = { [weak self] in self?.close() }
+    view.onAdd = { [weak self] in
+      guard let screen = VirtualWorkspaces.screens().first(where: { $0.uuid == spaces.display.identifier }) else {
+        return NSSound.beep()
+      }
+      let total = VirtualWorkspaces.shared.addWorkspace(on: screen.uuid)
+      self?.show(selecting: total - 1)
+    }
+    view.onRemove = { [weak self] index in
+      guard let screen = VirtualWorkspaces.screens().first(where: { $0.uuid == spaces.display.identifier }) else {
+        return NSSound.beep()
+      }
+      let outcome = VirtualWorkspaces.shared.removeWorkspace(index, on: screen)
+      if !outcome.ok { NSSound.beep() }
+      OSDWindow.shared.show(message: outcome.message, screenID: screen.id, force: true, duration: 2)
+      self?.show(selecting: max(index - 1, 0))
+    }
+    view.onRename = { index, name -> String?? in
+      guard spaces.display.spaces.indices.contains(index),
+        let key = spaces.display.spaces[index].identity.key,
+        SpaceNameStore.shared.setName(name, for: key)
+      else { return nil }
+      return .some(SpaceNameStore.shared.name(for: key))
+    }
 
     let size = view.preferredSize(maximum: screen.visibleFrame.insetBy(dx: 40, dy: 40).size)
     let panel = SpaceGridPanel(
@@ -186,7 +207,7 @@ final class SpaceGridWindow {
     if spaces.screenID != 0, !CGDisplayBounds(spaces.screenID).contains(window.anchor) {
       return Self.report("\(window.appName) is on another display.", screenID: spaces.screenID)
     }
-    WindowSender.sendShowingProgress(window, toIndex: index, screenID: spaces.screenID)
+    WindowSender.sendShowingResult(window, toIndex: index, screenID: spaces.screenID)
   }
 
   private static func report(_ message: String, screenID: UInt32 = 0) {
@@ -249,9 +270,22 @@ final class SpaceGridView: NSVisualEffectView {
     get { cellsView.onCancel }
     set { cellsView.onCancel = newValue }
   }
+  var onRename: ((Int, String) -> String??)? {
+    get { cellsView.onRename }
+    set { cellsView.onRename = newValue }
+  }
+  var onAdd: (() -> Void)? {
+    get { cellsView.onAdd }
+    set { cellsView.onAdd = newValue }
+  }
+  var onRemove: ((Int) -> Void)? {
+    get { cellsView.onRemove }
+    set { cellsView.onRemove = newValue }
+  }
 
-  init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil) {
-    cellsView = SpaceGridCellsView(cells: cells, currentIndex: currentIndex, sendingName: sendingName)
+  init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil, selected: Int? = nil) {
+    cellsView = SpaceGridCellsView(
+      cells: cells, currentIndex: currentIndex, sendingName: sendingName, selected: selected)
     super.init(frame: .zero)
     material = .hudWindow
     state = .active
@@ -277,8 +311,17 @@ final class SpaceGridCellsView: NSView {
   /// The chosen Space, and whether to send the window there rather than switch.
   var onActivate: ((Int, Bool) -> Void)?
   var onCancel: (() -> Void)?
+  /// Saves a workspace's new name (empty clears it). Returns the name it now has (nil for none), or nil when the
+  /// name was refused.
+  var onRename: ((Int, String) -> String??)?
+  var onAdd: (() -> Void)?
+  var onRemove: ((Int) -> Void)?
+  /// The workspace a first ⌃⌫ asked to remove; a second ⌃⌫ on it removes it.
+  private var removing: Int?
 
-  private let cells: [SpaceGridCell]
+  private var cells: [SpaceGridCell]
+  /// The name being typed for the selected workspace while ⌃R renames it.
+  private var renaming: String?
   private let currentIndex: Int
   /// Set in send mode: the window being sent. Its own Space can't be picked.
   private let sendingName: String?
@@ -287,20 +330,27 @@ final class SpaceGridCellsView: NSView {
   private var query = ""
   private var matchIndices: [Int]
   private let headerHeight: CGFloat = 30
+  /// The line of editing shortcuts under the cells.
+  private let footerHeight: CGFloat = 26
+  private let minimumWidth: CGFloat = 440
   private let padding: CGFloat = 20
   private let gap: CGFloat = 12
   private let cellSize = NSSize(width: 150, height: 90)
 
-  init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil) {
+  init(cells: [SpaceGridCell], currentIndex: Int, sendingName: String? = nil, selected: Int? = nil) {
     self.cells = cells
     self.currentIndex = currentIndex
     self.sendingName = sendingName
-    self.selected = cells.indices.contains(currentIndex) ? currentIndex : 0
+    if let selected, cells.indices.contains(selected) {
+      self.selected = selected
+    } else {
+      self.selected = cells.indices.contains(currentIndex) ? currentIndex : 0
+    }
     self.matchIndices = cells.map(\.index)
     super.init(frame: .zero)
     if sendMode {
       matchIndices.removeAll { $0 == currentIndex }
-      if cells.count > 1 { selected = (currentIndex + 1) % cells.count }
+      if cells.count > 1 { self.selected = (currentIndex + 1) % cells.count }
     }
     addTrackingArea(
       NSTrackingArea(
@@ -315,8 +365,9 @@ final class SpaceGridCellsView: NSView {
   func preferredSize(maximum: NSSize) -> NSSize {
     let columns = CGFloat(SpaceGridLayout.columns(for: cells.count))
     let rows = CGFloat(SpaceGridLayout.rows(for: cells.count))
-    let width = 2 * padding + columns * cellSize.width + (columns - 1) * gap
-    let height = 2 * padding + headerHeight + rows * cellSize.height + (rows - 1) * gap
+    // Wide enough for the hints even with only a couple of workspaces.
+    let width = max(2 * padding + columns * cellSize.width + (columns - 1) * gap, minimumWidth)
+    let height = 2 * padding + headerHeight + rows * cellSize.height + (rows - 1) * gap + footerHeight
     return NSSize(width: min(width, maximum.width), height: min(height, maximum.height))
   }
 
@@ -324,8 +375,10 @@ final class SpaceGridCellsView: NSView {
     let columns = SpaceGridLayout.columns(for: cells.count)
     let column = index % columns
     let row = index / columns
+    let cellsWidth = CGFloat(columns) * cellSize.width + CGFloat(columns - 1) * gap
+    let left = max(padding, (bounds.width - cellsWidth) / 2)
     return NSRect(
-      x: padding + CGFloat(column) * (cellSize.width + gap),
+      x: left + CGFloat(column) * (cellSize.width + gap),
       y: padding + headerHeight + CGFloat(row) * (cellSize.height + gap),
       width: cellSize.width, height: cellSize.height)
   }
@@ -340,6 +393,7 @@ final class SpaceGridCellsView: NSView {
     paragraph.lineBreakMode = .byTruncatingTail
 
     drawHeader()
+    drawFooter()
 
     for cell in cells {
       let frame = rect(for: cell.index)
@@ -359,11 +413,14 @@ final class SpaceGridCellsView: NSView {
       }
 
       let font = NSFont.systemFont(ofSize: cell.hasCustomName ? 17 : 34, weight: .medium)
-      let attributes: [NSAttributedString.Key: Any] = [
+      var attributes: [NSAttributedString.Key: Any] = [
         .font: font, .foregroundColor: NSColor.white.withAlphaComponent(isMatch ? 1 : 0.25),
         .paragraphStyle: paragraph,
       ]
-      let text = NSAttributedString(string: cell.title, attributes: attributes)
+      let editing = isSelected ? renaming : nil
+      let title = editing.map { $0 + "▏" } ?? cell.title
+      if editing != nil { attributes[.font] = NSFont.systemFont(ofSize: 17, weight: .medium) }
+      let text = NSAttributedString(string: title, attributes: attributes)
       let inset = frame.insetBy(dx: 10, dy: 8)
       let height = min(inset.height, ceil(text.boundingRect(
         with: NSSize(width: inset.width, height: inset.height),
@@ -376,7 +433,11 @@ final class SpaceGridCellsView: NSView {
 
   private func drawHeader() {
     let text: String
-    if !query.isEmpty {
+    if let removing {
+      text = "Remove “\(cells[removing].title)”?"
+    } else if renaming != nil {
+      text = "Rename workspace \(selected + 1)"
+    } else if !query.isEmpty {
       text = "Search: \(query)"
     } else if let sendingName {
       text = "Send “\(sendingName)” to…"
@@ -387,11 +448,37 @@ final class SpaceGridCellsView: NSView {
     paragraph.lineBreakMode = .byTruncatingTail
     let attributes: [NSAttributedString.Key: Any] = [
       .font: NSFont.systemFont(ofSize: 14, weight: .regular),
-      .foregroundColor: NSColor.white.withAlphaComponent(query.isEmpty && !sendMode ? 0.45 : 0.95),
+      .foregroundColor: NSColor.white.withAlphaComponent(
+        query.isEmpty && !sendMode && renaming == nil && removing == nil ? 0.45 : 0.95),
       .paragraphStyle: paragraph,
     ]
     NSAttributedString(string: text, attributes: attributes)
       .draw(in: NSRect(x: padding, y: padding - 6, width: bounds.width - 2 * padding, height: headerHeight))
+  }
+
+  private func drawFooter() {
+    let hint: String
+    if removing != nil {
+      hint = "⌃⌫ again removes it; its windows join the one before"
+    } else if renaming != nil {
+      hint = "↩ save  ·  esc cancel  ·  empty goes back to the number"
+    } else if !sendMode {
+      hint = "⌃R rename  ·  ⌃N add  ·  ⌃⌫ remove"
+    } else {
+      return
+    }
+    let paragraph = NSMutableParagraphStyle()
+    paragraph.alignment = .center
+    paragraph.lineBreakMode = .byTruncatingTail
+    let attributes: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: 12, weight: .regular),
+      .foregroundColor: NSColor.white.withAlphaComponent(removing != nil || renaming != nil ? 0.75 : 0.4),
+      .paragraphStyle: paragraph,
+    ]
+    NSAttributedString(string: hint, attributes: attributes)
+      .draw(in: NSRect(
+        x: padding, y: bounds.height - padding - footerHeight + 10, width: bounds.width - 2 * padding,
+        height: footerHeight - 6))
   }
 
   private func setQuery(_ newQuery: String) {
@@ -424,7 +511,76 @@ final class SpaceGridCellsView: NSView {
     if matchIndices.contains(index) { onActivate?(index, sendMode || shift) } else { NSSound.beep() }
   }
 
+  // MARK: - Renaming
+
+  private func startRenaming() {
+    let cell = cells[selected]
+    renaming = cell.hasCustomName ? cell.title : ""
+    needsDisplay = true
+  }
+
+  private func finishRenaming(save: Bool) {
+    guard let name = renaming else { return }
+    if save {
+      guard let saved = onRename?(selected, name) else { return NSSound.beep() }
+      let cell = cells[selected]
+      cells[selected] = SpaceGridCell(
+        index: cell.index, title: saved ?? String(cell.index + 1), hasCustomName: saved != nil)
+    }
+    renaming = nil
+    setQuery("")
+  }
+
+  private func renameKeyDown(_ event: NSEvent) {
+    let flags = event.modifierFlags.intersection([.command, .control, .option])
+    if flags == .command, event.charactersIgnoringModifiers == "v" {
+      let pasted = NSPasteboard.general.string(forType: .string)?.components(separatedBy: .newlines).first ?? ""
+      renaming? += pasted
+      needsDisplay = true
+      return
+    }
+    if flags == .command, event.charactersIgnoringModifiers == "a" || event.keyCode == 51 {
+      renaming = ""
+      needsDisplay = true
+      return
+    }
+    guard flags.isEmpty || flags == .option else { return NSSound.beep() }
+    switch event.keyCode {
+    case 36, 76: finishRenaming(save: true)
+    case 53: finishRenaming(save: false)
+    case 51:
+      renaming = String(renaming?.dropLast() ?? "")
+      needsDisplay = true
+    case 123, 124, 125, 126: NSSound.beep()
+    default:
+      guard let characters = event.characters, !characters.isEmpty,
+        characters.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
+      else { return NSSound.beep() }
+      renaming? += characters
+      needsDisplay = true
+    }
+  }
+
   override func keyDown(with event: NSEvent) {
+    if renaming != nil { return renameKeyDown(event) }
+    let flags = event.modifierFlags.intersection([.command, .control, .option])
+    let wasRemoving = removing
+    if removing != nil {
+      removing = nil
+      needsDisplay = true
+    }
+    if flags == .control, !sendMode {
+      switch event.keyCode {
+      case 15: return startRenaming()  // R
+      case 45: return onAdd?() ?? ()  // N
+      case 51:  // Delete
+        if wasRemoving == selected { return onRemove?(selected) ?? () }
+        removing = selected
+        needsDisplay = true
+        return
+      default: break
+      }
+    }
     if !event.modifierFlags.intersection([.command, .control]).isEmpty {
       NSSound.beep()
       return
@@ -462,12 +618,14 @@ final class SpaceGridCellsView: NSView {
   }
 
   override func mouseMoved(with event: NSEvent) {
+    guard renaming == nil else { return }
     if let index = index(at: convert(event.locationInWindow, from: nil)), matchIndices.contains(index) {
       select(index)
     }
   }
 
   override func mouseDown(with event: NSEvent) {
+    if renaming != nil { return finishRenaming(save: true) }
     if let index = index(at: convert(event.locationInWindow, from: nil)) {
       if matchIndices.contains(index) { activate(index, shift: event.modifierFlags.contains(.shift)) }
     } else {

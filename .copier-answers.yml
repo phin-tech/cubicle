@@ -7,7 +7,7 @@ app_store: false
 build_settings: ''
 bundle_id: tech.phin.Cubicle
 bundle_prefix: tech.phin
-description: Instant, named, searchable Spaces for macOS
+description: Instant, named, searchable workspaces for macOS
 devices: false
 downloads: true
 github_owner: phin-tech
