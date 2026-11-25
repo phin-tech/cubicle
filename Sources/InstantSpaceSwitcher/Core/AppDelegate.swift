@@ -54,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     SpaceCatalog.shared.startObserving()
     WindowClickMenu.shared.setEnabled(WindowClickMenu.isEnabledSetting)
     AppHistory.shared.start()
+    VirtualWorkspaces.shared.start()
     StackManager.shared.start()
     startCommandServer()
     UpdateChecker.shared.start()
@@ -81,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     commandServer?.stop()
+    VirtualWorkspaces.shared.stop()
     iss_set_switch_callback(nil)
     iss_destroy()
     stopObservingSpaceChanges()
@@ -426,7 +428,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func performSpaceSwitch(_ direction: ISSDirection) {
-    if !iss_switch(direction) {
+    let switched = VirtualWorkspaces.enabled
+      ? VirtualWorkspaces.shared.stepUnderCursor(direction) : iss_switch(direction)
+    if !switched {
       NSSound.beep()
       return
     }
@@ -434,7 +438,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func performSpaceSwitchToIndex(_ index: UInt32) {
-    if !iss_switch_to_index(index) {
+    if !Self.switchUnderCursor(toIndex: index) {
       NSSound.beep()
       return
     }
@@ -450,9 +454,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     performSpaceSwitchToIndex(lastSpaceIndex)
   }
 
+  /// Switches the display under the cursor: to a virtual workspace, or to a native Space through ISS.
+  static func switchUnderCursor(toIndex index: UInt32) -> Bool {
+    VirtualWorkspaces.enabled
+      ? VirtualWorkspaces.shared.switchUnderCursor(toIndex: Int(index)) : iss_switch_to_index(index)
+  }
+
   private func refreshSpaceInfo() {
-    var info = ISSSpaceInfo()
-    if iss_get_menubar_space_info(&info) {
+    let info: ISSSpaceInfo?
+    if VirtualWorkspaces.enabled {
+      info = VirtualWorkspaces.shared.menuBarInfo()
+    } else {
+      var native = ISSSpaceInfo()
+      info = iss_get_menubar_space_info(&native) ? native : nil
+    }
+    if let info {
       if currentSpaceIndex != info.currentIndex {
         lastSpaceIndex = currentSpaceIndex
         currentSpaceIndex = info.currentIndex
@@ -466,6 +482,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   private func observeSpaceChanges() {
     stopObservingSpaceChanges()
+    NotificationCenter.default.publisher(for: .virtualWorkspaceDidChange)
+      .receive(on: RunLoop.main)
+      .sink { [weak self] _ in MainActor.assumeIsolated { self?.refreshSpaceInfo() } }
+      .store(in: &cancellables)
     spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.activeSpaceDidChangeNotification,
       object: nil,
@@ -529,7 +549,7 @@ extension AppDelegate: MenuBarControllerDelegate {
   func menuBarController(
     _ controller: MenuBarController, didRequestSwitchToSpaceAtIndex index: UInt32
   ) {
-    if !iss_switch_to_index(index) {
+    if !Self.switchUnderCursor(toIndex: index) {
       NSSound.beep()
     }
     controller.scheduleRefresh(after: 0.25)

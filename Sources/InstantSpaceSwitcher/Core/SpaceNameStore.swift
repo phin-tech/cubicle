@@ -10,6 +10,11 @@ func stringFromCStringBuffer<T>(_ buffer: T) -> String {
 struct SpaceIdentity: Equatable {
   let key: String?
 
+  /// A virtual workspace's identity (see `VirtualWorkspaces.key`).
+  init(key: String) {
+    self.key = key
+  }
+
   init(displayIdentifier: String, record: SpaceRecord) {
     if let uuid = UUID(uuidString: record.uuid) {
       key = "space:\(uuid.uuidString)"

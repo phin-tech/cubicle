@@ -157,7 +157,7 @@ final class SpaceGridWindow {
         self.send(sending, toIndex: index, spaces: spaces)
       } else {
         DispatchQueue.main.async {
-          if !iss_switch_to_index(UInt32(index)) { NSSound.beep() }
+          if !AppDelegate.switchUnderCursor(toIndex: UInt32(index)) { NSSound.beep() }
         }
       }
     }

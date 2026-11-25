@@ -25,6 +25,9 @@ enum CommandHandler {
     case "go": return go(request.argument ?? "")
     case "left": return step(ISSDirectionLeft)
     case "right": return step(ISSDirectionRight)
+    case "new-space" where VirtualWorkspaces.enabled:
+      VirtualWorkspaces.shared.count += 1
+      return CubicleResponse(ok: true, message: "Each display now has \(VirtualWorkspaces.shared.count) workspaces.")
     case "new-space":
       guard AXIsProcessTrusted() else {
         return CubicleResponse(ok: false, message: SpaceCreator.Failure.notTrusted.message)
@@ -203,7 +206,7 @@ enum CommandHandler {
   }
 
   private static func step(_ direction: ISSDirection) -> CubicleResponse {
-    iss_switch(direction)
+    (VirtualWorkspaces.enabled ? VirtualWorkspaces.shared.stepUnderCursor(direction) : iss_switch(direction))
       ? CubicleResponse(ok: true)
       : CubicleResponse(ok: false, message: "No Space in that direction (or Accessibility is not granted to Cubicle).")
   }
@@ -237,7 +240,7 @@ enum CommandHandler {
     if target == spaces.currentIndex {
       return CubicleResponse(ok: true, message: "Already on \(title).")
     }
-    guard iss_switch_to_index(UInt32(target)) else {
+    guard AppDelegate.switchUnderCursor(toIndex: UInt32(target)) else {
       return CubicleResponse(ok: false, message: "Switch failed. Is Accessibility granted to Cubicle?")
     }
     let also = alternatives.isEmpty ? "" : " (also matches: \(alternatives.joined(separator: ", ")))"

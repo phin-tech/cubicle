@@ -67,6 +67,7 @@ final class StackManager {
         MainActor.assumeIsolated { self?.appQuit(app.processIdentifier) }
       }.store(in: &cancellables)
     center.publisher(for: NSWorkspace.activeSpaceDidChangeNotification)
+      .merge(with: NotificationCenter.default.publisher(for: .virtualWorkspaceDidChange))
       .sink { [weak self] _ in MainActor.assumeIsolated { self?.scheduleApply(after: 0.2) } }
       .store(in: &cancellables)
     NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
@@ -132,6 +133,8 @@ final class StackManager {
   /// tiling): it leaves its stack.
   private func checkForHandMove(_ id: UInt32) {
     pendingChecks[id] = nil
+    // Parking a virtual workspace moves its windows off screen; that isn't a hand move.
+    if VirtualWorkspaces.shared.isParked(id) { return }
     guard var window = known[id], let placed = window.lastSet,
       let frame = WindowMover.frame(of: window.element)
     else { return }
@@ -180,6 +183,7 @@ final class StackManager {
   /// The windows that can be stacked on each Space that is showing, keyed by Space. Learns new windows as it
   /// goes, numbering them in the order they are first seen.
   private func scan() -> [String: [UInt32]] {
+    VirtualWorkspaces.shared.reconcile()
     SpaceCatalog.shared.refresh()
     var showing: [UInt64: String] = [:]
     for display in SpaceCatalog.shared.displays {
@@ -194,7 +198,7 @@ final class StackManager {
       guard let bundleID = app.bundleIdentifier else { continue }
       for element in Self.windows(of: app.processIdentifier) where Self.isStackable(element) {
         guard let id = WindowServer.windowID(of: element),
-          let key = showing[WindowServer.space(ofWindow: id)]
+          let key = showing[SpaceCatalog.shared.space(ofWindow: id)]
         else { continue }
         if known[id] == nil {
           known[id] = Known(element: element, pid: app.processIdentifier, bundleID: bundleID, opened: nextOpened)
@@ -226,7 +230,7 @@ final class StackManager {
 
   /// The Space a window is on, by the key bindings are saved under.
   func spaceKey(of id: UInt32) -> String? {
-    let spaceID = WindowServer.space(ofWindow: id)
+    let spaceID = SpaceCatalog.shared.space(ofWindow: id)
     guard spaceID != 0 else { return nil }
     for display in SpaceCatalog.shared.displays {
       if let space = display.spaces.first(where: { $0.spaceID == spaceID }) { return space.identity.key }

@@ -44,6 +44,7 @@ final class SpaceCatalog {
     NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
       .merge(with: NSWorkspace.shared.notificationCenter.publisher(
         for: NSWorkspace.activeSpaceDidChangeNotification))
+      .merge(with: NotificationCenter.default.publisher(for: .virtualWorkspaceDidChange))
       .receive(on: RunLoop.main)
       .sink { [weak self] _ in self?.scheduleRefresh() }
       .store(in: &cancellables)
@@ -60,6 +61,11 @@ final class SpaceCatalog {
   func refresh() {
     refreshWorkItem?.cancel()
     refreshWorkItem = nil
+    if VirtualWorkspaces.enabled {
+      let updated = VirtualWorkspaces.shared.displays()
+      if updated != displays { displays = updated }
+      return
+    }
     guard let raw = WindowServer.managedDisplaySpaces() else {
       if !displays.isEmpty { displays = [] }
       return
@@ -67,6 +73,11 @@ final class SpaceCatalog {
     let names = Self.screenNames()
     let updated = Self.parse(raw, screenNames: names, separateSpaces: NSScreen.screensHaveSeparateSpaces)
     if updated != displays { displays = updated }
+  }
+
+  /// The (possibly virtual) Space a window is on, or 0 if unknown.
+  func space(ofWindow id: CGWindowID) -> UInt64 {
+    VirtualWorkspaces.enabled ? VirtualWorkspaces.shared.spaceID(ofWindow: id) : WindowServer.space(ofWindow: id)
   }
 
   func identity(displayIdentifier: String, index: UInt32) -> SpaceIdentity? {

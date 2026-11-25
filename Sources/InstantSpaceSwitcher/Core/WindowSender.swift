@@ -52,6 +52,10 @@ enum WindowSender {
 
     guard !sending else { return fail("Already moving a window.") }
     guard AXIsProcessTrusted() else { return fail("Accessibility is not granted to Cubicle.") }
+    if VirtualWorkspaces.enabled {
+      let result = VirtualWorkspaces.shared.send(window, toIndex: target)
+      return completion(Outcome(ok: result.ok, summary: result.message, details: result.message))
+    }
     guard let spaces = spaces(for: window) else {
       return fail("Could not read the Spaces on the window's display.")
     }
