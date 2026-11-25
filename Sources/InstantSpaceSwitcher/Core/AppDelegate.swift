@@ -370,6 +370,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !outcome.ok { NSSound.beep() }
         let screenID = SpaceCatalog.shared.spacesUnderCursor()?.screenID ?? 0
         OSDWindow.shared.show(message: outcome.message, screenID: screenID, force: true)
+      case .newWorkspaceFromWindows:
+        WindowPicker.shared.toggle()
       case .togglePause:
         let paused = StackManager.shared.spaceKeyUnderCursor().map(StackingStore.shared.isPaused) ?? false
         let outcome = StackManager.shared.setPaused(!paused, everywhere: false)

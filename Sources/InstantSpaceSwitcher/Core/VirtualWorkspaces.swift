@@ -319,6 +319,68 @@ final class VirtualWorkspaces {
       height: (frame.height * scaleY).rounded())
   }
 
+  // MARK: - A new workspace from picked windows
+
+  /// Gives `windows` a workspace of their own on the display of the first one, names it, and shows it. It takes the
+  /// first unused workspace there (no windows, no name, no layout, not showing), or adds one if there is none.
+  /// Windows from other displays come along, keeping their place relative to the screen.
+  func newWorkspace(with windows: [WindowMover.Target], named name: String) -> (ok: Bool, message: String) {
+    guard !switching else { return (false, "A workspace switch is under way.") }
+    reconcile()
+    let ids = windows.map(\.windowID).filter { members[$0] != nil }
+    let screens = Self.screens()
+    guard let first = ids.first, let display = members[first]?.display,
+      let screen = screens.first(where: { $0.uuid == display })
+    else { return (false, "Cubicle can't move those windows to a workspace.") }
+
+    let occupied = Set(members.values.filter { $0.display == display }.map(\.workspace))
+    let used = Set((0..<count).filter { index in
+      let key = Self.key(display, index)
+      return SpaceNameStore.shared.name(for: key) != nil || !StackingStore.shared.bindings(on: key).isEmpty
+    })
+    guard
+      let index = Self.unusedWorkspace(
+        count: count, occupied: occupied, used: used, showing: activeIndex(display), limit: 16)
+    else { return (false, "Every workspace is in use, and there can be at most 16.") }
+    if index == count { count += 1 }
+
+    let key = Self.key(display, index)
+    SpaceNameStore.shared.setName(name, for: key)
+    // A window showing on this display simply changes workspace and the switch leaves it where it is. One from
+    // another display becomes a parked window of the new workspace, so the switch brings it over.
+    let to = WindowSnapper.visibleFrame(containing: screen.bounds) ?? screen.bounds
+    for id in ids {
+      guard var member = members[id] else { continue }
+      if member.display != display, let from = screens.first(where: { $0.uuid == member.display }),
+        let frame = member.parkedFrame ?? WindowMover.frame(of: member.element)
+      {
+        member.parkedFrame = Self.translate(
+          frame, from: WindowSnapper.visibleFrame(containing: from.bounds) ?? from.bounds, to: to)
+      }
+      member.display = display
+      member.workspace = index
+      members[id] = member
+    }
+    lastFocused[key] = first
+    switchTo(index, on: screen, showOSD: false)
+    save()
+    SpaceCatalog.shared.refresh()
+    NotificationCenter.default.post(name: .virtualWorkspaceDidChange, object: nil)
+    let title = SpaceNameStore.shared.name(for: key) ?? "Workspace \(index + 1)"
+    return (true, "\(title) (\(ids.count) window\(ids.count == 1 ? "" : "s"))")
+  }
+
+  /// The first workspace that has no windows, isn't `used` (named, or with a layout) and isn't showing; otherwise
+  /// `count`, meaning one more, as long as that stays under `limit`.
+  nonisolated static func unusedWorkspace(
+    count: Int, occupied: Set<Int>, used: Set<Int>, showing: Int, limit: Int
+  ) -> Int? {
+    if let free = (0..<count).first(where: { !occupied.contains($0) && !used.contains($0) && $0 != showing }) {
+      return free
+    }
+    return count < limit ? count : nil
+  }
+
   // MARK: - Sending
 
   /// Moves a window to workspace `index` on its display. It disappears at once if that workspace isn't showing.

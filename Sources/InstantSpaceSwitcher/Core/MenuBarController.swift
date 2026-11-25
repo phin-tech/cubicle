@@ -9,6 +9,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private var spacesMenuItem: NSMenuItem?
   private var moveWindowMenuItem: NSMenuItem?
   private var moveWorkspaceMenuItem: NSMenuItem?
+  private var newWorkspaceMenuItem: NSMenuItem?
   private var stackingMenuItem: NSMenuItem?
   private var cachedSpaceInfo: WorkspaceInfo?
   private var refreshWorkItem: DispatchWorkItem?
@@ -100,6 +101,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     menu.addItem(moveWorkspace)
     moveWorkspaceMenuItem = moveWorkspace
 
+    let newWorkspace = NSMenuItem(
+      title: "New Workspace from Windows…", action: #selector(newWorkspaceFromWindows(_:)), keyEquivalent: "")
+    newWorkspace.target = self
+    newWorkspace.image = NSImage(systemSymbolName: "plus.rectangle.on.rectangle", accessibilityDescription: nil)
+    menu.addItem(newWorkspace)
+    newWorkspaceMenuItem = newWorkspace
+
     let stackingItem = NSMenuItem(title: "Stacking", action: nil, keyEquivalent: "")
     let stackingSubmenu = NSMenu(title: "Stacking")
     stackingSubmenu.delegate = self
@@ -146,6 +154,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     menu.addItem(quitItem)
 
     return menu
+  }
+
+  @objc private func newWorkspaceFromWindows(_ sender: Any?) {
+    // After the menu has closed, so its own click isn't caught.
+    DispatchQueue.main.async { WindowPicker.shared.start() }
   }
 
   @objc private func moveWorkspaceToNextDisplay(_ sender: Any?) {

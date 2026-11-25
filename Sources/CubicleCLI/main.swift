@@ -44,6 +44,7 @@ let usage = """
     layout [--all]      Show this workspace's bindings and stacks, or every workspace's bindings
     grid                Open the workspace grid
     new-space           Add a workspace to every display (up to 16)
+    pick-workspace      Click windows to put on a new workspace, then name it
     move-workspace      Move the workspace under the cursor, with its windows and name, to the next display
     help                Show this help
 
@@ -268,6 +269,11 @@ case "send":
 case "move-workspace":
   let response = send(CubicleRequest(command: "move-workspace"))
   guard response.ok else { fail(response.message ?? "move-workspace failed") }
+  if let message = response.message { print(message) }
+
+case "pick-workspace":
+  let response = send(CubicleRequest(command: "pick-workspace"))
+  guard response.ok else { fail(response.message ?? "pick-workspace failed") }
   if let message = response.message { print(message) }
 
 case "new-space":

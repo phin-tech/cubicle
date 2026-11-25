@@ -454,10 +454,13 @@ enum HotkeyIdentifier: String, CaseIterable {
   case swapLeft, swapRight, swapUp, swapDown
   case togglePause
   case moveWorkspaceToNextDisplay
+  case newWorkspaceFromWindows
 
   /// Off until you turn it on: moving windows is experimental, and the snap and stacking keys would take over ⌃⌥
   /// keys other apps use.
-  var enabledByDefault: Bool { self != .sendWindow && !Self.windowIdentifiers.contains(self) }
+  var enabledByDefault: Bool {
+    self == .newWorkspaceFromWindows || (self != .sendWindow && !Self.windowIdentifiers.contains(self))
+  }
 
   /// The stacking shortcuts (cycle, swap, pause).
   var isStacking: Bool {
@@ -499,13 +502,15 @@ enum HotkeyIdentifier: String, CaseIterable {
 
   /// The window shortcuts, kept in one dictionary: the snaps and the stacking ones.
   static var windowIdentifiers: [HotkeyIdentifier] {
-    allCases.filter { $0.snapAction != nil || $0.isStacking || $0 == .moveWorkspaceToNextDisplay }
+    allCases.filter {
+      $0.snapAction != nil || $0.isStacking || $0 == .moveWorkspaceToNextDisplay || $0 == .newWorkspaceFromWindows
+    }
   }
 
   /// The shortcuts Settings and the walkthrough turn on and off together. Pause has its own switch: it changes
   /// what Cubicle does rather than acting once.
   static var windowShortcutGroup: [HotkeyIdentifier] {
-    windowIdentifiers.filter { $0 != .togglePause && $0 != .moveWorkspaceToNextDisplay }
+    windowIdentifiers.filter { ![.togglePause, .moveWorkspaceToNextDisplay, .newWorkspaceFromWindows].contains($0) }
   }
 
   var displayName: String {
@@ -539,6 +544,7 @@ enum HotkeyIdentifier: String, CaseIterable {
     case .swapDown: return "Stack: swap with zone below"
     case .togglePause: return "Stack: pause or resume this workspace"
     case .moveWorkspaceToNextDisplay: return "Move workspace to the next display"
+    case .newWorkspaceFromWindows: return "New workspace from picked windows…"
     default: return "Snap window: \(snapAction!.displayName)"
     }
   }
@@ -884,6 +890,10 @@ extension HotkeyIdentifier {
       return HotkeyCombination(
         keyCode: UInt32(kVK_ANSI_M), modifiers: UInt32(controlKey | optionKey | cmdKey), displayKey: "M",
         keyEquivalent: "m")
+    case .newWorkspaceFromWindows:
+      return HotkeyCombination(
+        keyCode: UInt32(kVK_ANSI_N), modifiers: UInt32(controlKey | optionKey | cmdKey), displayKey: "N",
+        keyEquivalent: "n")
     default:
       if let snapAction { return .defaultSnap(snapAction) }
       if isStacking { return .defaultStacking(self) }
