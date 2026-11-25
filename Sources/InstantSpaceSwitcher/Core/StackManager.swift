@@ -66,8 +66,7 @@ final class StackManager {
         guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
         MainActor.assumeIsolated { self?.appQuit(app.processIdentifier) }
       }.store(in: &cancellables)
-    center.publisher(for: NSWorkspace.activeSpaceDidChangeNotification)
-      .merge(with: NotificationCenter.default.publisher(for: .virtualWorkspaceDidChange))
+    NotificationCenter.default.publisher(for: .virtualWorkspaceDidChange)
       .sink { [weak self] _ in MainActor.assumeIsolated { self?.scheduleApply(after: 0.2) } }
       .store(in: &cancellables)
     NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)

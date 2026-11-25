@@ -2,17 +2,15 @@ import AppKit
 import ApplicationServices
 import Combine
 import CubicleIPC
-import ISS
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private let menuBarController = MenuBarController()
   private let hotkeyStore = HotkeyStore.shared
   private lazy var preferencesWindowController = PreferencesWindowController()
-  private var currentSpaceIndex: UInt32?
-  private var lastSpaceIndex: UInt32?
+  private var currentSpaceIndex: Int?
+  private var lastSpaceIndex: Int?
   private var cancellables = Set<AnyCancellable>()
-  private var spaceChangeObserver: Any?
   private var appActivationObserver: Any?
   private var commandServer: CubicleIPCServer?
 
@@ -32,24 +30,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     ensureAccessibilityPermission()
 
-    if !iss_init() {
-      print("Failed to initialize ISS event tap")
-      retryIssInit()
-    }
-
-    if UserDefaults.standard.bool(forKey: "swipeOverride") {
-      iss_set_swipe_override(true)
-    }
-
-    let gestureSpeed = UserDefaults.standard.double(forKey: "gestureSpeed")
-    if gestureSpeed > 0 {
-      iss_set_gesture_speed(gestureSpeed)
-    }
-
-    if UserDefaults.standard.object(forKey: "overlayDetectionEnabled") as? Bool ?? true {
-      iss_set_overlay_detection_enabled(true)
-    }
-
     _ = SpaceNameStore.shared
     SpaceCatalog.shared.startObserving()
     WindowClickMenu.shared.setEnabled(WindowClickMenu.isEnabledSetting)
@@ -61,10 +41,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     OnboardingWindowController.shared.onFinish = { [weak self] in self?.menuBarController.pointToStatusItem() }
     // After the menu bar item exists, so the welcome window can point at it.
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { OnboardingWindowController.shared.showIfFirstRun() }
-    // ISS calls this on the main thread as it posts a switch, on the display under the cursor.
-    iss_set_switch_callback { target in
-      MainActor.assumeIsolated { AppDelegate.showSwitchOSD(targetIndex: Int(target)) }
-    }
 
     setupMainMenu()
     menuBarController.delegate = self
@@ -83,9 +59,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationWillTerminate(_ notification: Notification) {
     commandServer?.stop()
     VirtualWorkspaces.shared.stop()
-    iss_set_switch_callback(nil)
-    iss_destroy()
-    stopObservingSpaceChanges()
     stopObservingAppActivation()
   }
 
@@ -112,27 +85,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       commandServer = server
     } catch {
       print("Cubicle command server failed to start: \(error.localizedDescription)")
-    }
-  }
-
-  /// Names the Space a switch is heading to. The display is read now, while the cursor is still where the switch
-  /// happened.
-  private static func showSwitchOSD(targetIndex: Int) {
-    // A window move switches Spaces on its own; its OSD says where the window went instead.
-    guard !WindowSender.sending else { return }
-    let spaces = SpaceCatalog.shared.spacesUnderCursor()
-    // Off the cataloged displays, the index can't be trusted to name the right Space.
-    let identity = spaces.flatMap { $0.matched ? $0.display.spaces.first { $0.index == targetIndex }?.identity : nil }
-    let message = SpaceNameStore.shared.message(forTargetIndex: targetIndex, identity: identity)
-    DispatchQueue.main.async {
-      OSDWindow.shared.show(message: message, screenID: spaces?.screenID ?? 0)
-    }
-  }
-
-  private func retryIssInit() {
-    guard !iss_init() else { return }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-      self?.retryIssInit()
     }
   }
 
@@ -365,9 +317,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       guard let self else { return }
       switch identifier {
       case .left:
-        self.performSpaceSwitch(ISSDirectionLeft)
+        self.performSpaceSwitch(.left)
       case .right:
-        self.performSpaceSwitch(ISSDirectionRight)
+        self.performSpaceSwitch(.right)
       case .space1:
         self.performSpaceSwitchToIndex(0)
       case .space2:
@@ -427,18 +379,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
-  private func performSpaceSwitch(_ direction: ISSDirection) {
-    let switched = VirtualWorkspaces.enabled
-      ? VirtualWorkspaces.shared.stepUnderCursor(direction) : iss_switch(direction)
-    if !switched {
+  private func performSpaceSwitch(_ direction: SwitchDirection) {
+    if !VirtualWorkspaces.shared.stepUnderCursor(direction) {
       NSSound.beep()
       return
     }
     refreshSpaceInfo()
   }
 
-  private func performSpaceSwitchToIndex(_ index: UInt32) {
-    if !Self.switchUnderCursor(toIndex: index) {
+  private func performSpaceSwitchToIndex(_ index: Int) {
+    if !VirtualWorkspaces.shared.switchUnderCursor(toIndex: index) {
       NSSound.beep()
       return
     }
@@ -454,21 +404,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     performSpaceSwitchToIndex(lastSpaceIndex)
   }
 
-  /// Switches the display under the cursor: to a virtual workspace, or to a native Space through ISS.
-  static func switchUnderCursor(toIndex index: UInt32) -> Bool {
-    VirtualWorkspaces.enabled
-      ? VirtualWorkspaces.shared.switchUnderCursor(toIndex: Int(index)) : iss_switch_to_index(index)
-  }
-
   private func refreshSpaceInfo() {
-    let info: ISSSpaceInfo?
-    if VirtualWorkspaces.enabled {
-      info = VirtualWorkspaces.shared.menuBarInfo()
-    } else {
-      var native = ISSSpaceInfo()
-      info = iss_get_menubar_space_info(&native) ? native : nil
-    }
-    if let info {
+    if let info = VirtualWorkspaces.shared.menuBarInfo() {
       if currentSpaceIndex != info.currentIndex {
         lastSpaceIndex = currentSpaceIndex
         currentSpaceIndex = info.currentIndex
@@ -481,30 +418,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func observeSpaceChanges() {
-    stopObservingSpaceChanges()
     NotificationCenter.default.publisher(for: .virtualWorkspaceDidChange)
       .receive(on: RunLoop.main)
       .sink { [weak self] _ in MainActor.assumeIsolated { self?.refreshSpaceInfo() } }
       .store(in: &cancellables)
-    spaceChangeObserver = NSWorkspace.shared.notificationCenter.addObserver(
-      forName: NSWorkspace.activeSpaceDidChangeNotification,
-      object: nil,
-      queue: .main
-    ) { [weak self] _ in
-      Task { @MainActor [weak self] in
-        guard let self else { return }
-        self.refreshSpaceInfo()
-        iss_reset_predictions()
-        self.menuBarController.scheduleRefresh(after: 0.2)
-      }
-    }
-  }
-
-  private func stopObservingSpaceChanges() {
-    if let observer = spaceChangeObserver {
-      NSWorkspace.shared.notificationCenter.removeObserver(observer)
-      spaceChangeObserver = nil
-    }
   }
 
   private func observeAppActivation() {
@@ -531,11 +448,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: MenuBarControllerDelegate {
   func menuBarControllerDidRequestSwitchLeft(_ controller: MenuBarController) {
-    performSpaceSwitch(ISSDirectionLeft)
+    performSpaceSwitch(.left)
   }
 
   func menuBarControllerDidRequestSwitchRight(_ controller: MenuBarController) {
-    performSpaceSwitch(ISSDirectionRight)
+    performSpaceSwitch(.right)
   }
 
   func menuBarControllerDidRequestPreferences(_ controller: MenuBarController) {
@@ -549,7 +466,7 @@ extension AppDelegate: MenuBarControllerDelegate {
   func menuBarController(
     _ controller: MenuBarController, didRequestSwitchToSpaceAtIndex index: UInt32
   ) {
-    if !Self.switchUnderCursor(toIndex: index) {
+    if !VirtualWorkspaces.shared.switchUnderCursor(toIndex: Int(index)) {
       NSSound.beep()
     }
     controller.scheduleRefresh(after: 0.25)

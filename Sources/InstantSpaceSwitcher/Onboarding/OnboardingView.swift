@@ -104,7 +104,7 @@ struct OnboardingView: View {
         good: "Cubicle has the Accessibility permission.",
         bad: "Cubicle needs the Accessibility permission.")
       Text(
-        "To switch Spaces for you, Cubicle sends the same swipe your trackpad would. macOS only allows that for apps "
+        "To switch workspaces, Cubicle moves your windows on and off the screen. macOS only allows that for apps "
           + "you've approved under Privacy & Security > Accessibility.")
       if !model.accessibilityGranted {
         Text("Open System Settings, find Cubicle in the list and switch it on. This page updates by itself.")
@@ -120,46 +120,29 @@ struct OnboardingView: View {
 
   private var spaces: some View {
     VStack(alignment: .leading, spacing: 14) {
-      Text(
-        model.rows.isEmpty
-          ? "Cubicle can't see your Spaces yet."
-          : "You have \(model.rows.count) Space\(model.rows.count == 1 ? "" : "s") on this display.")
+      Text("You have \(model.rows.count) workspace\(model.rows.count == 1 ? "" : "s") on this display.")
         .font(.title3.bold())
-      Text("A Space is a separate desktop with its own windows. One for mail and chat, one for code, one for "
-        + "everything else works well.")
-      HStack {
-        Button {
-          model.addSpace()
-        } label: {
-          if model.isAddingSpace {
-            ProgressView().controlSize(.small)
-          } else {
-            Label("Add a Space", systemImage: "plus.rectangle.on.rectangle")
-          }
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(model.isAddingSpace || !model.accessibilityGranted)
-        Button("Open Mission Control") { model.openMissionControl() }
+      Text("A workspace is a separate desktop with its own windows. One for mail and chat, one for code, one for "
+        + "everything else works well. Every display has its own, and switching is instant.")
+      Button {
+        model.addWorkspace()
+      } label: {
+        Label("Add a workspace", systemImage: "plus.rectangle.on.rectangle")
       }
-      if !model.accessibilityGranted {
-        Text("Adding a Space presses the + in Mission Control for you, which needs the Accessibility permission "
-          + "from the previous step.")
-          .font(.callout)
-          .foregroundStyle(.secondary)
-      }
+      .buttonStyle(.borderedProminent)
       if let notice = model.notice {
         Text(notice).font(.callout).foregroundStyle(.secondary)
       }
-      if model.rearrangesSpaces {
+      if model.extraMacSpaces > 0 {
         GroupBox {
           VStack(alignment: .leading, spacing: 8) {
-            Label("macOS is set to rearrange your Spaces", systemImage: "exclamationmark.triangle")
+            Label("Remove your extra macOS Spaces", systemImage: "exclamationmark.triangle")
               .font(.headline)
             Text(
-              "\"Automatically rearrange Spaces based on most recent use\" moves Spaces around under you, so "
-                + "\"Space 2\" stops meaning the same Space. It's on by default.")
+              "Cubicle's workspaces replace macOS Spaces, and it can't see windows on Spaces you aren't on. Move "
+                + "your windows to the first Space on each display, then remove the others in Mission Control.")
               .font(.callout)
-            Button("Turn it off (restarts the Dock)") { model.turnOffRearranging() }
+            Button("Open Mission Control") { model.openMissionControl() }
           }
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(4)
@@ -172,7 +155,7 @@ struct OnboardingView: View {
     VStack(alignment: .leading, spacing: 14) {
       Text("Names show up in the grid, the menu bar and search, so you can jump by name instead of by number.")
       if model.rows.isEmpty {
-        Text("No Spaces to name yet. Go back and add one.").foregroundStyle(.secondary)
+        Text("No workspaces to name yet.").foregroundStyle(.secondary)
       } else {
         VStack(spacing: 8) {
           ForEach(model.rows) { row in
@@ -182,7 +165,7 @@ struct OnboardingView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 28)
               TextField(
-                "Space \(row.index + 1)",
+                "Workspace \(row.index + 1)",
                 text: Binding(get: { row.name }, set: { model.rename(row, to: $0) })
               )
               .textFieldStyle(.roundedBorder)

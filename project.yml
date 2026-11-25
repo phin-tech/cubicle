@@ -18,7 +18,7 @@ packages:
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     exactVersion: 2.10.0
-  # Package.swift: the C event-tap core (ISS) and the socket layer shared with the CLI (CubicleIPC).
+  # Package.swift: the socket layer shared with the CLI (CubicleIPC).
   Cubicle:
     path: .
 targets:
@@ -36,8 +36,6 @@ targets:
       Debug: Signing.xcconfig
       Release: Signing.xcconfig
     dependencies:
-      - package: Cubicle
-        product: ISS
       - package: Cubicle
         product: CubicleIPC
       - package: Sparkle

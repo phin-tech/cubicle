@@ -1,13 +1,23 @@
 import AppKit
 import ApplicationServices
-import ISS
+
+enum SwitchDirection {
+  case left, right
+}
+
+/// The workspaces of one display, as the menu bar shows them.
+struct WorkspaceInfo: Equatable {
+  let currentIndex: Int
+  let count: Int
+  let displayID: String
+}
 
 extension Notification.Name {
   /// Posted after a virtual workspace switch or a window is sent to another workspace.
   static let virtualWorkspaceDidChange = Notification.Name("VirtualWorkspaceDidChange")
 }
 
-/// Virtual workspaces: Cubicle's own workspaces in place of native Spaces (experimental branch).
+/// Workspaces: Cubicle's own desktops, in place of macOS Spaces.
 ///
 /// macOS keeps one Space per display. Every display has a fixed number of workspaces; each window belongs to one
 /// workspace on one display. Switching parks the outgoing workspace's windows just off the display's corner (by
@@ -15,14 +25,10 @@ extension Notification.Name {
 /// every window stays on the one native Space, moving a window to another workspace is instant and Accessibility
 /// can always see it.
 ///
-/// `SpaceCatalog` presents these workspaces as if they were Spaces, so the grid, names, menu, CLI and stacks keep
-/// working unchanged.
+/// `SpaceCatalog` republishes them for the grid, names, menu, CLI and stacks.
 @MainActor
 final class VirtualWorkspaces {
   static let shared = VirtualWorkspaces()
-
-  /// The whole app runs on virtual workspaces on this branch. A toggle back to native Spaces would flip this.
-  static let enabled = true
 
   /// Workspaces per display (1 to 16, one per Space hotkey). `cubicle new-space` adds one.
   var count: Int {
@@ -65,7 +71,6 @@ final class VirtualWorkspaces {
   /// Restores the saved state: windows that still exist go back to their workspaces, and anything a crash left
   /// parked on a workspace that's no longer showing stays parked; everything else is adopted where it is.
   func start() {
-    guard Self.enabled else { return }
     if let saved = State.load() {
       active = saved.active
       let alive = Dictionary(currentWindows().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -92,7 +97,6 @@ final class VirtualWorkspaces {
   /// Puts every parked window back on screen, so quitting Cubicle never strands a window. Workspaces are kept
   /// and reapplied at the next launch.
   func stop() {
-    guard Self.enabled else { return }
     if let observer = activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
     let parked = members.filter { $0.value.parkedFrame != nil }.map(\.key)
     move(park: [], unpark: parked)
@@ -135,7 +139,7 @@ final class VirtualWorkspaces {
   }
 
   /// Names are saved per display and workspace number.
-  static func key(_ display: String, _ index: Int) -> String {
+  nonisolated static func key(_ display: String, _ index: Int) -> String {
     "workspace:\(display.lowercased()):\(index + 1)"
   }
 
@@ -150,17 +154,9 @@ final class VirtualWorkspaces {
   }
 
   /// What the menu bar shows: the workspaces of the display with the menu bar.
-  func menuBarInfo() -> ISSSpaceInfo? {
+  func menuBarInfo() -> WorkspaceInfo? {
     guard let screen = Self.screens().first else { return nil }
-    var info = ISSSpaceInfo()
-    info.currentIndex = UInt32(activeIndex(screen.uuid))
-    info.spaceCount = UInt32(count)
-    withUnsafeMutableBytes(of: &info.displayID) { buffer in
-      let bytes = Array(screen.uuid.utf8.prefix(buffer.count - 1))
-      buffer.copyBytes(from: bytes)
-      buffer[bytes.count] = 0
-    }
-    return info
+    return WorkspaceInfo(currentIndex: activeIndex(screen.uuid), count: count, displayID: screen.uuid)
   }
 
   // MARK: - Switching
@@ -174,9 +170,9 @@ final class VirtualWorkspaces {
 
   /// Switches the display under the cursor one workspace left or right.
   @discardableResult
-  func stepUnderCursor(_ direction: ISSDirection) -> Bool {
+  func stepUnderCursor(_ direction: SwitchDirection) -> Bool {
     guard let screen = Self.screenUnderCursor() else { return false }
-    let target = activeIndex(screen.uuid) + (direction == ISSDirectionLeft ? -1 : 1)
+    let target = activeIndex(screen.uuid) + (direction == .left ? -1 : 1)
     return switchTo(target, on: screen)
   }
 
@@ -408,7 +404,6 @@ final class VirtualWorkspaces {
   /// Adopts windows Cubicle hasn't seen into the workspace showing where they are (a window that appeared on
   /// screen was opened there), forgets closed ones, and re-parks any parked window its app pulled back on screen.
   func reconcile() {
-    guard Self.enabled else { return }
     let screens = Self.screens()
     var seen = Set<UInt32>()
     var strayed: [UInt32] = []

@@ -6,19 +6,19 @@ let usage = """
 
   Commands:
     list [--here] [--json] [query]
-                        List Spaces (* marks the current one). --here limits it to the display under the
+                        List workspaces (* marks the current one). --here limits it to the display under the
                         cursor; a query keeps only fuzzy matches, best first.
     list --alfred [query]
-                        Same as --here, printed as Alfred Script Filter JSON (the current Space is left out)
-    go <name|number>    Switch to a Space by fuzzy name or one-based number
-    send [--quick-drag|--via-display|--via-virtual] [--stay] <name|number>  Move the focused window to a Space on its display, and go with it (experimental)
-    left | right        Switch one Space left or right
+                        Same as --here, printed as Alfred Script Filter JSON (the current workspace is left out)
+    go <name|number>    Switch to a workspace by fuzzy name or one-based number
+    send <name|number>  Move the focused window to a workspace on its display
+    left | right        Switch one workspace left or right
     snap <action> [--app <name>|--window <id>|--previous]
                         Move and resize a window: left-half, right-half, top-half, bottom-half, top-left,
                         top-right, bottom-left, bottom-right, maximize, center or restore. It acts on the
                         focused window (from Alfred or Raycast, the window you were in before), or on
                         another app's front window, a window by id, or the app you were in before this one.
-    windows [--json]    List the windows on the current Space, with the ids --window takes
+    windows [--json]    List the windows on the current workspace, with the ids --window takes
     actions [--json|--alfred] [query]
                         List the window commands; --alfred prints them for Alfred's "w" keyword
     gap [points]        Show or set the gap kept between snapped windows (0-100, default 0)
@@ -27,23 +27,23 @@ let usage = """
 
   Stacking (snapping to a zone also puts the window in that zone's stack):
     bind <zone|space> [--app <name>|--window <id>|--previous]
-                        Bind the window's app on its Space to a zone (left-half ... bottom-right, full), or
-                        to the Space only. Its windows, now and later, stack in that zone there.
+                        Bind the window's app on its workspace to a zone (left-half ... bottom-right, full), or
+                        to the workspace only. Its windows, now and later, stack in that zone there.
     bind-window <zone|space> [...]
                         Bind just this window; it wins over its app's binding
     unbind | unbind-window [...]
-                        Remove the app's (or the window's) binding on the window's Space
+                        Remove the app's (or the window's) binding on the window's workspace
     cycle [next|prev] [...]
                         Bring the next or previous window in the window's stack to the front
     swap <left|right|up|down|zone> [...]
                         Swap the window's stack with the neighbouring zone's (or the named zone's)
     pause | resume [--all]
-                        Pause or resume stacking on the Space under the cursor, or everywhere
+                        Pause or resume stacking on the workspace under the cursor, or everywhere
     ignore | unignore [app] [...]
                         Add or remove an app on the ignore list (default: the focused window's app)
-    layout [--all]      Show this Space's bindings and stacks, or every Space's bindings
-    grid                Open the Space grid
-    new-space           Add a Space (Mission Control opens briefly)
+    layout [--all]      Show this workspace's bindings and stacks, or every workspace's bindings
+    grid                Open the workspace grid
+    new-space           Add a workspace to every display (up to 16)
     help                Show this help
 
   Commands run inside the Cubicle app, which holds the Accessibility permission, so this tool
@@ -85,7 +85,7 @@ func launchApp() -> Bool {
 /// Sends a request, starting Cubicle first if needed. `failure` decides how errors are reported.
 func send(_ request: CubicleRequest, failure: (String) -> Never = fail) -> CubicleResponse {
   // Moving a window waits for animated Space switches.
-  let timeout = ["send", "mc-dump"].contains(request.command) ? 15 : 5
+  let timeout = 5
   do {
     return try CubicleIPC.send(request, timeout: timeout)
   } catch CubicleIPCError.notRunning {
@@ -268,10 +268,6 @@ case "new-space":
   let response = send(CubicleRequest(command: "new-space"))
   guard response.ok else { fail(response.message ?? "new-space failed") }
   if let message = response.message { print(message) }
-
-case "mc-dump":
-  let response = send(CubicleRequest(command: "mc-dump", argument: rest.first))
-  print(response.message ?? "")
 
 case "snap":
   let target = windowTarget(rest)

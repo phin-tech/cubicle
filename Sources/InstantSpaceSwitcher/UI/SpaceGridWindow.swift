@@ -1,5 +1,4 @@
 import AppKit
-import ISS
 
 struct SpaceGridCell: Equatable {
   let index: Int
@@ -99,11 +98,9 @@ enum SpaceGridLayout {
   }
 }
 
-/// A summoned overlay showing the Spaces of the display under the cursor.
-///
-/// `iss_switch_to_index` acts on the display under the cursor, so the grid is limited to that display
-/// (see issue #43 for why other displays cannot be targeted yet). In send mode it shows the Spaces of the
-/// focused window's display instead, and picking one moves the window there.
+/// A summoned overlay showing the workspaces of the display under the cursor, the display a switch acts on. In
+/// send mode it shows the workspaces of the focused window's display instead, and picking one moves the window
+/// there.
 @MainActor
 final class SpaceGridWindow {
   static let shared = SpaceGridWindow()
@@ -157,7 +154,7 @@ final class SpaceGridWindow {
         self.send(sending, toIndex: index, spaces: spaces)
       } else {
         DispatchQueue.main.async {
-          if !AppDelegate.switchUnderCursor(toIndex: UInt32(index)) { NSSound.beep() }
+          if !VirtualWorkspaces.shared.switchUnderCursor(toIndex: index) { NSSound.beep() }
         }
       }
     }
@@ -186,7 +183,7 @@ final class SpaceGridWindow {
     if spaces.screenID != 0, !CGDisplayBounds(spaces.screenID).contains(window.anchor) {
       return Self.report("\(window.appName) is on another display.", screenID: spaces.screenID)
     }
-    WindowSender.sendShowingProgress(window, toIndex: index, screenID: spaces.screenID)
+    WindowSender.sendShowingResult(window, toIndex: index, screenID: spaces.screenID)
   }
 
   private static func report(_ message: String, screenID: UInt32 = 0) {

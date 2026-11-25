@@ -265,7 +265,7 @@ final class WindowClickMenu: NSObject {
     guard let choice = sender.representedObject as? Choice else { return }
     // Let the menu finish closing before the move starts grabbing and switching.
     DispatchQueue.main.async {
-      WindowSender.sendShowingProgress(choice.window, toIndex: choice.index, screenID: choice.screenID)
+      WindowSender.sendShowingResult(choice.window, toIndex: choice.index, screenID: choice.screenID)
     }
   }
 }

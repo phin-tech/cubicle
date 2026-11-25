@@ -13,9 +13,9 @@ enum OnboardingStep: Int, CaseIterable, Equatable {
   var title: String {
     switch self {
     case .welcome: return "Welcome to Cubicle"
-    case .accessibility: return "Let Cubicle switch Spaces"
-    case .spaces: return "Make some Spaces"
-    case .names: return "Name your Spaces"
+    case .accessibility: return "Let Cubicle move windows"
+    case .spaces: return "Your workspaces"
+    case .names: return "Name your workspaces"
     case .grid: return "Jump around"
     case .tools: return "Command line and Alfred"
     case .finish: return "You're all set"

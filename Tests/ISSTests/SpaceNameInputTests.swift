@@ -4,7 +4,6 @@ import XCTest
 
 @MainActor
 final class SpaceNameInputTests: XCTestCase {
-  private let workUUID = "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"
 
   private func accepts(_ original: String, selection: NSRange, replacement: String) -> Bool {
     let proposed = (original as NSString).replacingCharacters(in: selection, with: replacement)
@@ -12,11 +11,10 @@ final class SpaceNameInputTests: XCTestCase {
   }
 
   private func display() -> SpaceDisplay {
-    let raw: [[String: Any]] = [[
-      "Display Identifier": "monitor-a",
-      "Spaces": [["id64": 1, "uuid": workUUID, "type": 0]],
-    ]]
-    return SpaceCatalog.parse(raw, screenNames: ["monitor-a": "Monitor"], separateSpaces: true)[0]
+    SpaceDisplay(
+      identifier: "monitor-a", name: "Monitor",
+      spaces: [SpaceDescription(index: 0, identity: SpaceIdentity(key: VirtualWorkspaces.key("monitor-a", 0)), spaceID: 1)],
+      currentSpaceID: 1)
   }
 
   private func field(in view: NSView) -> NSTextField? {

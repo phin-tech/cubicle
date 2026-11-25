@@ -18,9 +18,9 @@ final class OnboardingModel: ObservableObject {
   @Published var step: OnboardingStep = .welcome
   @Published private(set) var accessibilityGranted = AXIsProcessTrusted()
   @Published private(set) var rows: [OnboardingSpaceRow] = []
-  @Published private(set) var isAddingSpace = false
   @Published private(set) var cliStatus: CLIInstaller.Status = .notInstalled
-  @Published private(set) var rearrangesSpaces = true
+  /// macOS Spaces beyond the first on any display. Cubicle can't see windows on them.
+  @Published private(set) var extraMacSpaces = 0
   @Published var notice: String?
   @Published var shortcutNotice: String?
 
@@ -79,7 +79,7 @@ final class OnboardingModel: ObservableObject {
     accessibilityGranted = AXIsProcessTrusted()
     refreshSpaces()
     refreshTools()
-    rearrangesSpaces = Self.readRearrangesSpaces()
+    extraMacSpaces = WindowServer.extraMacSpaces()
   }
 
   // MARK: - Accessibility
@@ -116,46 +116,15 @@ final class OnboardingModel: ObservableObject {
     if let position = rows.firstIndex(where: { $0.index == row.index }) { rows[position].name = name }
   }
 
-  func addSpace() {
-    guard !isAddingSpace else { return }
-    isAddingSpace = true
-    notice = nil
-    SpaceCreator.addSpace { [weak self] result in
-      MainActor.assumeIsolated {
-        guard let self else { return }
-        self.isAddingSpace = false
-        switch result {
-        case .success: self.notice = "Added a Space."
-        case .failure(let failure): self.notice = failure.message
-        }
-        self.refreshSpaces()
-        // The Dock needs a moment before the new Space shows up in the catalog.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.refreshSpaces() }
-      }
-    }
+  /// Every display gets one more workspace.
+  func addWorkspace() {
+    VirtualWorkspaces.shared.count += 1
+    notice = "Each display now has \(VirtualWorkspaces.shared.count) workspaces."
+    refreshSpaces()
   }
 
   func openMissionControl() {
     NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Mission Control.app"))
-  }
-
-  /// "Automatically rearrange Spaces based on most recent use" shuffles Spaces under you, which breaks "Space 2"
-  /// meaning the same Space twice. macOS has it on by default.
-  static func readRearrangesSpaces() -> Bool {
-    (CFPreferencesCopyAppValue("mru-spaces" as CFString, "com.apple.dock" as CFString) as? Bool) ?? true
-  }
-
-  func turnOffRearranging() {
-    for arguments in [["/usr/bin/defaults", "write", "com.apple.dock", "mru-spaces", "-bool", "false"],
-      ["/usr/bin/killall", "Dock"]]
-    {
-      let process = Process()
-      process.executableURL = URL(fileURLWithPath: arguments[0])
-      process.arguments = Array(arguments.dropFirst())
-      try? process.run()
-      process.waitUntilExit()
-    }
-    rearrangesSpaces = Self.readRearrangesSpaces()
   }
 
   // MARK: - Shortcuts

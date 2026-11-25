@@ -1,40 +1,25 @@
 import AppKit
 import ApplicationServices
 import CubicleIPC
-import ISS
 
 /// Runs commands that arrive from the `cubicle` CLI. These execute inside the app, so they use the app's
 /// Accessibility permission rather than the terminal's.
 @MainActor
 enum CommandHandler {
   static func handle(_ request: CubicleRequest, reply: @escaping (CubicleResponse) -> Void) {
-    if request.command == "mc-dump" {
-      MissionControlProbe.dump(to: request.argument ?? NSTemporaryDirectory() + "cubicle-mc.txt") { message in
-        DispatchQueue.main.async { reply(CubicleResponse(ok: true, message: message)) }
-      }
-    } else if request.command == "send" {
-      send(request.argument ?? "", reply: reply)
-    } else {
-      reply(handle(request))
-    }
+    reply(handle(request))
   }
 
   static func handle(_ request: CubicleRequest) -> CubicleResponse {
     switch request.command {
     case "list": return list(request)
     case "go": return go(request.argument ?? "")
-    case "left": return step(ISSDirectionLeft)
-    case "right": return step(ISSDirectionRight)
-    case "new-space" where VirtualWorkspaces.enabled:
+    case "send": return send(request.argument ?? "")
+    case "left": return step(.left)
+    case "right": return step(.right)
+    case "new-space":
       VirtualWorkspaces.shared.count += 1
       return CubicleResponse(ok: true, message: "Each display now has \(VirtualWorkspaces.shared.count) workspaces.")
-    case "new-space":
-      guard AXIsProcessTrusted() else {
-        return CubicleResponse(ok: false, message: SpaceCreator.Failure.notTrusted.message)
-      }
-      // Mission Control takes a second or two to open and close, so this does not wait for it.
-      SpaceCreator.addSpace { _ in }
-      return CubicleResponse(ok: true, message: "Adding a Space (Mission Control opens briefly).")
     case "grid":
       SpaceGridWindow.shared.show()
       return CubicleResponse(ok: true)
@@ -104,53 +89,36 @@ enum CommandHandler {
     return CubicleResponse(ok: true, spaces: entries)
   }
 
-  /// Moves the focused window to a Space on its display (by name or number). By default it holds the title bar
-  /// while the system switches Spaces, so you go along with it; the flags pick another route.
-  private static func send(_ query: String, reply: @escaping (CubicleResponse) -> Void) {
-    var trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    var route = WindowSender.Route.drag
-    var stay = false
-    while let flag = trimmed.split(separator: " ", maxSplits: 1).first, flag.hasPrefix("--") {
-      switch flag {
-      case "--via-virtual": route = .viaVirtual
-      case "--via-display": route = .viaDisplay
-      case "--quick-drag": route = .quickDrag
-      case "--stay": stay = true
-      default: return reply(CubicleResponse(ok: false, message: "Unknown send option: \(flag)"))
-      }
-      trimmed = String(trimmed.dropFirst(flag.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    if stay && route != .viaVirtual && route != .viaDisplay {
-      return reply(CubicleResponse(ok: false, message: "--stay currently requires --via-virtual or --via-display."))
-    }
-    guard !trimmed.isEmpty else { return reply(CubicleResponse(ok: false, message: "Usage: cubicle send <name|number>")) }
+  /// Moves the focused window to a workspace on its display (by name or number). It's instant.
+  private static func send(_ query: String) -> CubicleResponse {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return CubicleResponse(ok: false, message: "Usage: cubicle send <name|number>") }
     guard AXIsProcessTrusted() else {
-      return reply(CubicleResponse(ok: false, message: "Accessibility is not granted to Cubicle."))
+      return CubicleResponse(ok: false, message: "Accessibility is not granted to Cubicle.")
     }
     guard let window = WindowMover.focusedWindow() else {
-      return reply(CubicleResponse(ok: false, message: "Could not find the focused window."))
+      return CubicleResponse(ok: false, message: "Could not find the focused window.")
     }
     guard let spaces = WindowSender.spaces(for: window) else {
-      return reply(CubicleResponse(ok: false, message: "Could not read the Spaces on the window's display."))
+      return CubicleResponse(ok: false, message: "Could not read the workspaces on the window's display.")
     }
     let cells = SpaceGridWindow.cells(for: spaces)
 
     let target: Int
     if let number = Int(trimmed) {
       guard (1...cells.count).contains(number) else {
-        return reply(CubicleResponse(ok: false, message: "There is no Space \(number); this display has \(cells.count)."))
+        return CubicleResponse(ok: false, message: "There is no workspace \(number); this display has \(cells.count).")
       }
       target = number - 1
     } else {
       let hits = SpaceGridLayout.matches(in: cells, query: trimmed)
       guard let best = SpaceGridLayout.bestMatch(in: cells, query: trimmed, among: hits) else {
-        return reply(CubicleResponse(ok: false, message: "No Space matches '\(trimmed)'."))
+        return CubicleResponse(ok: false, message: "No workspace matches '\(trimmed)'.")
       }
       target = best
     }
-    WindowSender.send(window, toIndex: target, route: route, stay: stay) { outcome in
-      reply(CubicleResponse(ok: outcome.ok, message: outcome.details))
-    }
+    let outcome = WindowSender.send(window, toIndex: target)
+    return CubicleResponse(ok: outcome.ok, message: outcome.message)
   }
 
   /// Which window a window command acts on: `--window`, then `--app`, then `--previous`, else the focused one.
@@ -215,8 +183,8 @@ enum CommandHandler {
     return CubicleResponse(ok: true, message: "Gap set to \(value) pt.")
   }
 
-  private static func step(_ direction: ISSDirection) -> CubicleResponse {
-    (VirtualWorkspaces.enabled ? VirtualWorkspaces.shared.stepUnderCursor(direction) : iss_switch(direction))
+  private static func step(_ direction: SwitchDirection) -> CubicleResponse {
+    VirtualWorkspaces.shared.stepUnderCursor(direction)
       ? CubicleResponse(ok: true)
       : CubicleResponse(ok: false, message: "No Space in that direction (or Accessibility is not granted to Cubicle).")
   }
@@ -250,7 +218,7 @@ enum CommandHandler {
     if target == spaces.currentIndex {
       return CubicleResponse(ok: true, message: "Already on \(title).")
     }
-    guard AppDelegate.switchUnderCursor(toIndex: UInt32(target)) else {
+    guard VirtualWorkspaces.shared.switchUnderCursor(toIndex: target) else {
       return CubicleResponse(ok: false, message: "Switch failed. Is Accessibility granted to Cubicle?")
     }
     let also = alternatives.isEmpty ? "" : " (also matches: \(alternatives.joined(separator: ", ")))"
