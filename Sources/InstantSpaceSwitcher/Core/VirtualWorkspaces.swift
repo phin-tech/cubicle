@@ -238,6 +238,84 @@ final class VirtualWorkspaces {
     switchTo(member.workspace, on: screen)
   }
 
+  // MARK: - Moving a workspace to another display
+
+  /// Moves the workspace showing on the display under the cursor to the next display.
+  func moveWorkspaceUnderCursorToNextDisplay() -> (ok: Bool, message: String) {
+    let screens = Self.screens()
+    guard screens.count > 1 else { return (false, "There's only one display.") }
+    guard let source = Self.screenUnderCursor(),
+      let position = screens.firstIndex(where: { $0.uuid == source.uuid })
+    else { return (false, "Could not read the display under the cursor.") }
+    return moveWorkspace(from: source, to: screens[(position + 1) % screens.count])
+  }
+
+  /// Moves the workspace showing on `source` to `target`, with its windows, name and layout: into the workspace
+  /// with the same number there if it's empty, else the first empty one. Each window keeps its place relative to
+  /// the screen, so a left half stays a left half. `target` then shows it, and `source` goes back to the
+  /// workspace it showed before.
+  func moveWorkspace(from source: Screen, to target: Screen) -> (ok: Bool, message: String) {
+    guard !switching, source.uuid != target.uuid else { return (false, "Already there.") }
+    reconcile()
+    let index = activeIndex(source.uuid)
+    let moving = members.filter { $0.value.display == source.uuid && $0.value.workspace == index }.map(\.key)
+    guard !moving.isEmpty else { return (false, "This workspace has no windows to move.") }
+    let occupied = Set(members.values.filter { $0.display == target.uuid }.map(\.workspace))
+    guard let landing = ([index] + (0..<count)).first(where: { !occupied.contains($0) }) else {
+      return (false, "\(target.name) has no empty workspace. `cubicle new-space` adds one.")
+    }
+
+    let fromKey = Self.key(source.uuid, index)
+    let toKey = Self.key(target.uuid, landing)
+    let names = SpaceNameStore.shared
+    if let name = names.name(for: fromKey) {
+      names.setName(name, for: toKey)
+      names.setName("", for: fromKey)
+    }
+    StackingStore.shared.moveLayout(from: fromKey, to: toKey)
+
+    // Each window becomes a parked window of the landing workspace, with the frame it will have there, so showing
+    // that workspace puts it in place.
+    let from = WindowSnapper.visibleFrame(containing: source.bounds) ?? source.bounds
+    let to = WindowSnapper.visibleFrame(containing: target.bounds) ?? target.bounds
+    for id in moving {
+      guard var member = members[id],
+        let frame = member.parkedFrame ?? WindowMover.frame(of: member.element)
+      else { continue }
+      member.parkedFrame = Self.translate(frame, from: from, to: to)
+      member.display = target.uuid
+      member.workspace = landing
+      members[id] = member
+    }
+    if let remembered = lastFocused.removeValue(forKey: fromKey) { lastFocused[toKey] = remembered }
+
+    if activeIndex(target.uuid) == landing {
+      move(park: [], unpark: moving)
+    } else {
+      switchTo(landing, on: target, showOSD: false)
+    }
+    if let back = previous[source.uuid], back != index {
+      switchTo(back, on: source, showOSD: false)
+    }
+    save()
+    SpaceCatalog.shared.refresh()
+    NotificationCenter.default.post(name: .virtualWorkspaceDidChange, object: nil)
+    let title = names.name(for: toKey) ?? "Workspace \(landing + 1)"
+    return (true, "\(title) → \(target.name)")
+  }
+
+  /// `frame` in `from`, put at the same fractions of `to`.
+  nonisolated static func translate(_ frame: CGRect, from: CGRect, to: CGRect) -> CGRect {
+    guard from.width > 0, from.height > 0 else { return frame }
+    let scaleX = to.width / from.width
+    let scaleY = to.height / from.height
+    return CGRect(
+      x: (to.minX + (frame.minX - from.minX) * scaleX).rounded(),
+      y: (to.minY + (frame.minY - from.minY) * scaleY).rounded(),
+      width: (frame.width * scaleX).rounded(),
+      height: (frame.height * scaleY).rounded())
+  }
+
   // MARK: - Sending
 
   /// Moves a window to workspace `index` on its display. It disappears at once if that workspace isn't showing.

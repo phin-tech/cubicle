@@ -8,6 +8,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private var rightMenuItem: NSMenuItem?
   private var spacesMenuItem: NSMenuItem?
   private var moveWindowMenuItem: NSMenuItem?
+  private var moveWorkspaceMenuItem: NSMenuItem?
   private var stackingMenuItem: NSMenuItem?
   private var cachedSpaceInfo: WorkspaceInfo?
   private var refreshWorkItem: DispatchWorkItem?
@@ -92,6 +93,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     menu.addItem(moveItem)
     moveWindowMenuItem = moveItem
 
+    let moveWorkspace = NSMenuItem(
+      title: "Move Workspace to Next Display", action: #selector(moveWorkspaceToNextDisplay(_:)), keyEquivalent: "")
+    moveWorkspace.target = self
+    moveWorkspace.image = NSImage(systemSymbolName: "rectangle.2.swap", accessibilityDescription: nil)
+    menu.addItem(moveWorkspace)
+    moveWorkspaceMenuItem = moveWorkspace
+
     let stackingItem = NSMenuItem(title: "Stacking", action: nil, keyEquivalent: "")
     let stackingSubmenu = NSMenu(title: "Stacking")
     stackingSubmenu.delegate = self
@@ -138,6 +146,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     menu.addItem(quitItem)
 
     return menu
+  }
+
+  @objc private func moveWorkspaceToNextDisplay(_ sender: Any?) {
+    let outcome = VirtualWorkspaces.shared.moveWorkspaceUnderCursorToNextDisplay()
+    if !outcome.ok { NSSound.beep() }
+    let screenID = SpaceCatalog.shared.spacesUnderCursor()?.screenID ?? 0
+    OSDWindow.shared.show(message: outcome.message, screenID: screenID, force: true)
   }
 
   @objc private func switchLeft(_ sender: Any?) {
@@ -314,6 +329,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
     if let submenu = stackingMenuItem?.submenu, menu === submenu {
       return updateStackingMenu(submenu)
+    }
+    if menu === statusItem.menu {
+      moveWorkspaceMenuItem?.isHidden = NSScreen.screens.count < 2
     }
     if menu === statusItem.menu || menu === spacesMenuItem?.submenu {
       SpaceCatalog.shared.refresh()

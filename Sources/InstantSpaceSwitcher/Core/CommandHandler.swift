@@ -17,6 +17,9 @@ enum CommandHandler {
     case "send": return send(request.argument ?? "")
     case "left": return step(.left)
     case "right": return step(.right)
+    case "move-workspace":
+      let outcome = VirtualWorkspaces.shared.moveWorkspaceUnderCursorToNextDisplay()
+      return CubicleResponse(ok: outcome.ok, message: outcome.message)
     case "new-space":
       VirtualWorkspaces.shared.count += 1
       return CubicleResponse(ok: true, message: "Each display now has \(VirtualWorkspaces.shared.count) workspaces.")

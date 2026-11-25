@@ -44,6 +44,7 @@ let usage = """
     layout [--all]      Show this workspace's bindings and stacks, or every workspace's bindings
     grid                Open the workspace grid
     new-space           Add a workspace to every display (up to 16)
+    move-workspace      Move the workspace under the cursor, with its windows and name, to the next display
     help                Show this help
 
   Commands run inside the Cubicle app, which holds the Accessibility permission, so this tool
@@ -262,6 +263,11 @@ case "send":
   guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { fail("Usage: cubicle send <name|number>") }
   let response = send(CubicleRequest(command: "send", argument: query))
   guard response.ok else { fail(response.message ?? "send failed") }
+  if let message = response.message { print(message) }
+
+case "move-workspace":
+  let response = send(CubicleRequest(command: "move-workspace"))
+  guard response.ok else { fail(response.message ?? "move-workspace failed") }
   if let message = response.message { print(message) }
 
 case "new-space":

@@ -364,6 +364,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       case .swapLeft, .swapRight, .swapUp, .swapDown:
         let outcome = StackManager.shared.swap(.direction(identifier.swapDirection!))
         if !outcome.ok { NSSound.beep() }
+      case .moveWorkspaceToNextDisplay:
+        let outcome = VirtualWorkspaces.shared.moveWorkspaceUnderCursorToNextDisplay()
+        if !outcome.ok { NSSound.beep() }
+        let screenID = SpaceCatalog.shared.spacesUnderCursor()?.screenID ?? 0
+        OSDWindow.shared.show(message: outcome.message, screenID: screenID, force: true)
       case .togglePause:
         let paused = StackManager.shared.spaceKeyUnderCursor().map(StackingStore.shared.isPaused) ?? false
         let outcome = StackManager.shared.setPaused(!paused, everywhere: false)

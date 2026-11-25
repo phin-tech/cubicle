@@ -453,6 +453,7 @@ enum HotkeyIdentifier: String, CaseIterable {
   case cycleNext, cyclePrevious
   case swapLeft, swapRight, swapUp, swapDown
   case togglePause
+  case moveWorkspaceToNextDisplay
 
   /// Off until you turn it on: moving windows is experimental, and the snap and stacking keys would take over ⌃⌥
   /// keys other apps use.
@@ -497,11 +498,15 @@ enum HotkeyIdentifier: String, CaseIterable {
   static var snapIdentifiers: [HotkeyIdentifier] { allCases.filter { $0.snapAction != nil } }
 
   /// The window shortcuts, kept in one dictionary: the snaps and the stacking ones.
-  static var windowIdentifiers: [HotkeyIdentifier] { allCases.filter { $0.snapAction != nil || $0.isStacking } }
+  static var windowIdentifiers: [HotkeyIdentifier] {
+    allCases.filter { $0.snapAction != nil || $0.isStacking || $0 == .moveWorkspaceToNextDisplay }
+  }
 
   /// The shortcuts Settings and the walkthrough turn on and off together. Pause has its own switch: it changes
   /// what Cubicle does rather than acting once.
-  static var windowShortcutGroup: [HotkeyIdentifier] { windowIdentifiers.filter { $0 != .togglePause } }
+  static var windowShortcutGroup: [HotkeyIdentifier] {
+    windowIdentifiers.filter { $0 != .togglePause && $0 != .moveWorkspaceToNextDisplay }
+  }
 
   var displayName: String {
     switch self {
@@ -533,6 +538,7 @@ enum HotkeyIdentifier: String, CaseIterable {
     case .swapUp: return "Stack: swap with zone above"
     case .swapDown: return "Stack: swap with zone below"
     case .togglePause: return "Stack: pause or resume this workspace"
+    case .moveWorkspaceToNextDisplay: return "Move workspace to the next display"
     default: return "Snap window: \(snapAction!.displayName)"
     }
   }
@@ -874,6 +880,10 @@ extension HotkeyIdentifier {
     case .lastSpace: return .defaultLastSpace
     case .showGrid: return .defaultShowGrid
     case .sendWindow: return .defaultSendWindow
+    case .moveWorkspaceToNextDisplay:
+      return HotkeyCombination(
+        keyCode: UInt32(kVK_ANSI_M), modifiers: UInt32(controlKey | optionKey | cmdKey), displayKey: "M",
+        keyEquivalent: "m")
     default:
       if let snapAction { return .defaultSnap(snapAction) }
       if isStacking { return .defaultStacking(self) }
