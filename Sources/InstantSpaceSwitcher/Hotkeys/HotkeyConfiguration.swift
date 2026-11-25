@@ -140,6 +140,26 @@ struct HotkeyCombination: Codable, Equatable {
       keyEquivalent: keyEquivalent)
   }
 
+  /// ⌃⌥] and ⌃⌥[ cycle a stack, ⌃⌥⇧ arrows swap stacks, ⌃⌥P pauses (off until turned on).
+  static func defaultStacking(_ identifier: HotkeyIdentifier) -> HotkeyCombination {
+    let keyCode: Int
+    let displayKey: String
+    let keyEquivalent: String
+    var modifiers = controlKey | optionKey
+    switch identifier {
+    case .cycleNext: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_RightBracket, "]", "]")
+    case .cyclePrevious: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_LeftBracket, "[", "[")
+    case .swapLeft: (keyCode, displayKey, keyEquivalent) = (kVK_LeftArrow, "←", arrowKeyEquivalent(.leftArrow))
+    case .swapRight: (keyCode, displayKey, keyEquivalent) = (kVK_RightArrow, "→", arrowKeyEquivalent(.rightArrow))
+    case .swapUp: (keyCode, displayKey, keyEquivalent) = (kVK_UpArrow, "↑", arrowKeyEquivalent(.upArrow))
+    case .swapDown: (keyCode, displayKey, keyEquivalent) = (kVK_DownArrow, "↓", arrowKeyEquivalent(.downArrow))
+    default: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_P, "P", "p")
+    }
+    if identifier.swapDirection != nil { modifiers |= shiftKey }
+    return HotkeyCombination(
+      keyCode: UInt32(keyCode), modifiers: UInt32(modifiers), displayKey: displayKey, keyEquivalent: keyEquivalent)
+  }
+
   static func defaultForSpace(_ number: Int) -> HotkeyCombination {
     let keyCode: UInt32
     let displayKey: String
@@ -430,10 +450,31 @@ enum HotkeyIdentifier: String, CaseIterable {
   case snapLeftHalf, snapRightHalf, snapTopHalf, snapBottomHalf
   case snapTopLeft, snapTopRight, snapBottomLeft, snapBottomRight
   case snapMaximize, snapCenter, snapRestore
+  case cycleNext, cyclePrevious
+  case swapLeft, swapRight, swapUp, swapDown
+  case togglePause
 
-  /// Off until you turn it on: moving windows is experimental, and the snap keys would take over ⌃⌥ keys other
-  /// apps use.
-  var enabledByDefault: Bool { self != .sendWindow && snapAction == nil }
+  /// Off until you turn it on: moving windows is experimental, and the snap and stacking keys would take over ⌃⌥
+  /// keys other apps use.
+  var enabledByDefault: Bool { self != .sendWindow && !Self.windowIdentifiers.contains(self) }
+
+  /// The stacking shortcuts (cycle, swap, pause).
+  var isStacking: Bool {
+    switch self {
+    case .cycleNext, .cyclePrevious, .swapLeft, .swapRight, .swapUp, .swapDown, .togglePause: return true
+    default: return false
+    }
+  }
+
+  var swapDirection: Zone.Direction? {
+    switch self {
+    case .swapLeft: return .left
+    case .swapRight: return .right
+    case .swapUp: return .up
+    case .swapDown: return .down
+    default: return nil
+    }
+  }
 
   /// The snap this shortcut runs, for the snap shortcuts.
   var snapAction: SnapAction? {
@@ -454,6 +495,13 @@ enum HotkeyIdentifier: String, CaseIterable {
   }
 
   static var snapIdentifiers: [HotkeyIdentifier] { allCases.filter { $0.snapAction != nil } }
+
+  /// The window shortcuts, kept in one dictionary: the snaps and the stacking ones.
+  static var windowIdentifiers: [HotkeyIdentifier] { allCases.filter { $0.snapAction != nil || $0.isStacking } }
+
+  /// The shortcuts Settings and the walkthrough turn on and off together. Pause has its own switch: it changes
+  /// what Cubicle does rather than acting once.
+  static var windowShortcutGroup: [HotkeyIdentifier] { windowIdentifiers.filter { $0 != .togglePause } }
 
   var displayName: String {
     switch self {
@@ -478,6 +526,13 @@ enum HotkeyIdentifier: String, CaseIterable {
     case .lastSpace: return "Switch to last used space"
     case .showGrid: return "Show space grid"
     case .sendWindow: return "Send window to space…"
+    case .cycleNext: return "Stack: next window"
+    case .cyclePrevious: return "Stack: previous window"
+    case .swapLeft: return "Stack: swap with zone on the left"
+    case .swapRight: return "Stack: swap with zone on the right"
+    case .swapUp: return "Stack: swap with zone above"
+    case .swapDown: return "Stack: swap with zone below"
+    case .togglePause: return "Stack: pause or resume this Space"
     default: return "Snap window: \(snapAction!.displayName)"
     }
   }
@@ -537,7 +592,7 @@ final class HotkeyStore: ObservableObject {
     showGridHotkey = defaults.hotkey(forKey: DefaultsKey.showGrid.rawValue) ?? .defaultShowGrid
     sendWindowHotkey = defaults.hotkey(forKey: DefaultsKey.sendWindow.rawValue) ?? .defaultSendWindow
 
-    for identifier in HotkeyIdentifier.snapIdentifiers {
+    for identifier in HotkeyIdentifier.windowIdentifiers {
       snapHotkeys[identifier] =
         defaults.hotkey(forKey: "hotkey.\(identifier.rawValue)") ?? identifier.defaultCombination
     }
@@ -545,6 +600,13 @@ final class HotkeyStore: ObservableObject {
     for identifier in HotkeyIdentifier.allCases {
       let key = "enabled.\(identifier.rawValue)"
       enabledStates[identifier] = defaults.object(forKey: key) as? Bool ?? identifier.enabledByDefault
+    }
+    // Cycle and swap arrived after the snaps: start them on if the snaps already are, so the one switch that
+    // covers them all still reads as on.
+    let snapsOn = enabledStates[.snapLeftHalf] ?? false
+    for identifier in HotkeyIdentifier.windowShortcutGroup
+    where identifier.isStacking && defaults.object(forKey: "enabled.\(identifier.rawValue)") == nil {
+      enabledStates[identifier] = snapsOn
     }
   }
 
@@ -687,7 +749,7 @@ final class HotkeyStore: ObservableObject {
     defaults.setHotkey(sendWindowHotkey, forKey: DefaultsKey.sendWindow.rawValue)
 
     var snaps: [HotkeyIdentifier: HotkeyCombination] = [:]
-    for identifier in HotkeyIdentifier.snapIdentifiers {
+    for identifier in HotkeyIdentifier.windowIdentifiers {
       snaps[identifier] = identifier.defaultCombination
       defaults.setHotkey(identifier.defaultCombination, forKey: "hotkey.\(identifier.rawValue)")
     }
@@ -731,17 +793,18 @@ final class HotkeyStore: ObservableObject {
     defaults.set(enabled, forKey: key)
   }
 
-  /// Turns every snap shortcut on or off at once (Settings and the walkthrough offer them as one switch).
+  /// Turns every snap, cycle and swap shortcut on or off at once (Settings and the walkthrough offer them as one
+  /// switch).
   func setSnapShortcutsEnabled(_ enabled: Bool) {
     var states = enabledStates
-    for identifier in HotkeyIdentifier.snapIdentifiers {
+    for identifier in HotkeyIdentifier.windowShortcutGroup {
       states[identifier] = enabled
       defaults.set(enabled, forKey: "enabled.\(identifier.rawValue)")
     }
     enabledStates = states
   }
 
-  var snapShortcutsEnabled: Bool { HotkeyIdentifier.snapIdentifiers.allSatisfy(isEnabled) }
+  var snapShortcutsEnabled: Bool { HotkeyIdentifier.windowShortcutGroup.allSatisfy(isEnabled) }
 
   private enum DefaultsKey: String {
     case left = "hotkey.left"
@@ -813,6 +876,7 @@ extension HotkeyIdentifier {
     case .sendWindow: return .defaultSendWindow
     default:
       if let snapAction { return .defaultSnap(snapAction) }
+      if isStacking { return .defaultStacking(self) }
       return .defaultForSpace(Int(rawValue.dropFirst("space".count)) ?? 1)
     }
   }
@@ -822,5 +886,13 @@ extension HotkeyStore {
   /// Every action with its current shortcut.
   var assignments: [(HotkeyIdentifier, HotkeyCombination)] {
     HotkeyIdentifier.allCases.map { ($0, combination(for: $0)) }
+  }
+
+  /// The action already using `combination`, if giving it to `identifier` (or turning `identifier` on with it)
+  /// would make one key do two things. Only actions that are on count: a turned-off action keeps its shortcut
+  /// but doesn't hold the key.
+  func conflict(_ combination: HotkeyCombination, for identifier: HotkeyIdentifier) -> HotkeyIdentifier? {
+    HotkeyConflict.identifier(
+      using: combination, among: assignments.filter { isEnabled($0.0) }, excluding: identifier)
   }
 }

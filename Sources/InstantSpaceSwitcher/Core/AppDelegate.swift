@@ -54,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     SpaceCatalog.shared.startObserving()
     WindowClickMenu.shared.setEnabled(WindowClickMenu.isEnabledSetting)
     AppHistory.shared.start()
+    StackManager.shared.start()
     startCommandServer()
     UpdateChecker.shared.start()
     OnboardingWindowController.shared.onFinish = { [weak self] in self?.menuBarController.pointToStatusItem() }
@@ -403,6 +404,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SpaceGridWindow.shared.toggle()
       case .sendWindow:
         SpaceGridWindow.shared.toggleSend()
+      case .cycleNext, .cyclePrevious:
+        let outcome = StackManager.shared.cycle(forward: identifier == .cycleNext)
+        if !outcome.ok { NSSound.beep() }
+      case .swapLeft, .swapRight, .swapUp, .swapDown:
+        let outcome = StackManager.shared.swap(.direction(identifier.swapDirection!))
+        if !outcome.ok { NSSound.beep() }
+      case .togglePause:
+        let paused = StackManager.shared.spaceKeyUnderCursor().map(StackingStore.shared.isPaused) ?? false
+        let outcome = StackManager.shared.setPaused(!paused, everywhere: false)
+        if outcome.ok {
+          let screenID = SpaceCatalog.shared.spacesUnderCursor()?.screenID ?? 0
+          OSDWindow.shared.show(message: outcome.message, screenID: screenID, force: true)
+        } else {
+          NSSound.beep()
+        }
       default:
         if let action = identifier.snapAction { WindowSnapper.snap(action, beep: true) }
       }
@@ -504,6 +520,10 @@ extension AppDelegate: MenuBarControllerDelegate {
 
   func menuBarControllerDidRequestPreferences(_ controller: MenuBarController) {
     preferencesWindowController.present()
+  }
+
+  func menuBarControllerDidRequestStackingSettings(_ controller: MenuBarController) {
+    preferencesWindowController.present(tab: "stacking")
   }
 
   func menuBarController(

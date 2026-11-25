@@ -22,6 +22,24 @@ let usage = """
     actions [--json|--alfred] [query]
                         List the window commands; --alfred prints them for Alfred's "w" keyword
     gap [points]        Show or set the gap kept between snapped windows (0-100, default 0)
+
+  Stacking (snapping to a zone also puts the window in that zone's stack):
+    bind <zone|space> [--app <name>|--window <id>|--previous]
+                        Bind the window's app on its Space to a zone (left-half ... bottom-right, full), or
+                        to the Space only. Its windows, now and later, stack in that zone there.
+    bind-window <zone|space> [...]
+                        Bind just this window; it wins over its app's binding
+    unbind | unbind-window [...]
+                        Remove the app's (or the window's) binding on the window's Space
+    cycle [next|prev] [...]
+                        Bring the next or previous window in the window's stack to the front
+    swap <left|right|up|down|zone> [...]
+                        Swap the window's stack with the neighbouring zone's (or the named zone's)
+    pause | resume [--all]
+                        Pause or resume stacking on the Space under the cursor, or everywhere
+    ignore | unignore [app] [...]
+                        Add or remove an app on the ignore list (default: the focused window's app)
+    layout [--all]      Show this Space's bindings and stacks, or every Space's bindings
     grid                Open the Space grid
     new-space           Add a Space (Mission Control opens briefly)
     help                Show this help
@@ -106,6 +124,12 @@ func windowTarget(_ arguments: [String]) -> (app: String?, window: UInt32?, prev
     }
   }
   return (app, window, previous, rest)
+}
+
+/// Prints a command's message, or fails with it.
+func report(_ response: CubicleResponse, _ command: String) {
+  guard response.ok else { fail(response.message ?? "\(command) failed") }
+  if let message = response.message { print(message) }
 }
 
 func printJSON<T: Encodable>(_ value: T) {
@@ -296,6 +320,36 @@ case "gap":
   let response = send(CubicleRequest(command: "gap", argument: rest.first))
   guard response.ok else { fail(response.message ?? "gap failed") }
   if let message = response.message { print(rest.isEmpty ? "\(message) pt" : message) }
+
+case "bind", "bind-window":
+  let target = windowTarget(rest)
+  guard let name = target.rest.first, target.rest.count == 1 else {
+    fail("Usage: cubicle \(command) <zone|space> [--app <name>|--window <id>|--previous]\nZones: "
+      + Zone.allCases.map(\.rawValue).joined(separator: ", "))
+  }
+  report(send(CubicleRequest(
+    command: command, argument: name, app: target.app, window: target.window, previous: target.previous ? true : nil)),
+    command)
+
+case "unbind", "unbind-window", "cycle", "swap", "ignore", "unignore":
+  let target = windowTarget(rest)
+  var argument = target.rest.first
+  var app = target.app
+  // `ignore Finder` names the app directly.
+  if ["ignore", "unignore"].contains(command), let name = argument {
+    app = name
+    argument = nil
+  }
+  let wordAllowed = ["cycle", "swap", "ignore", "unignore"].contains(command)
+  guard target.rest.count <= (wordAllowed ? 1 : 0) else { fail("Too many arguments.\n\n\(usage)") }
+  if command == "swap" && argument == nil { fail("Usage: cubicle swap <left|right|up|down|zone>") }
+  report(send(CubicleRequest(
+    command: command, argument: argument, app: app, window: target.window, previous: target.previous ? true : nil)),
+    command)
+
+case "pause", "resume", "layout":
+  if let unknown = rest.first(where: { $0 != "--all" }) { fail("Unknown option '\(unknown)'.\n\n\(usage)") }
+  report(send(CubicleRequest(command: command, all: rest.contains("--all") ? true : nil)), command)
 
 case "left", "right", "grid":
   let response = send(CubicleRequest(command: command))

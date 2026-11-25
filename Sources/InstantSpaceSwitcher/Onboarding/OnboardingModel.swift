@@ -167,7 +167,7 @@ final class OnboardingModel: ObservableObject {
   /// Applies a recorded shortcut unless another action already uses it.
   func setShortcut(_ combination: HotkeyCombination, for identifier: HotkeyIdentifier) {
     let store = HotkeyStore.shared
-    if let other = HotkeyConflict.identifier(using: combination, among: store.assignments, excluding: identifier) {
+    if let other = store.conflict(combination, for: identifier) {
       NSSound.beep()
       shortcutNotice = "\(combination.displayString) is already used for \"\(other.displayName)\"."
       return

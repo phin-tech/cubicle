@@ -20,8 +20,8 @@ final class KeyboardShortcutsViewController: NSViewController {
     checkboxWithTitle: "Click a window for its Send to Space menu:", target: nil, action: nil)
   private let clickRecorder = ShortcutRecorderControl(frame: NSRect(x: 0, y: 0, width: 150, height: 22))
   private let snapCheckbox = NSButton(
-    checkboxWithTitle: "Window snapping shortcuts (⌃⌥ arrows for halves, U I J K for quarters, ↩ maximize, "
-      + "C center, ⌫ restore)", target: nil, action: nil)
+    checkboxWithTitle: "Window shortcuts (⌃⌥ arrows for halves, U I J K for quarters, ↩ maximize, "
+      + "C center, ⌫ restore, ] [ cycle a stack, ⇧ arrows swap stacks)", target: nil, action: nil)
 
   private struct ShortcutRow {
     let identifier: HotkeyIdentifier
@@ -326,6 +326,12 @@ extension KeyboardShortcutsViewController: NSTableViewDelegate {
     guard row < shortcuts.count else { return }
 
     let identifier = shortcuts[row].identifier
+    // Turning a shortcut on must not give its key a second job.
+    if sender.state == .on, let other = store.conflict(store.combination(for: identifier), for: identifier) {
+      sender.state = .off
+      showConflict(store.combination(for: identifier), other)
+      return
+    }
     store.setEnabled(sender.state == .on, for: identifier)
     
     shortcuts[row].isEnabled = sender.state == .on
@@ -335,20 +341,23 @@ extension KeyboardShortcutsViewController: NSTableViewDelegate {
   private func handleRecordingResult(
     _ combination: HotkeyCombination, for identifier: HotkeyIdentifier
   ) {
-    if let otherIdentifier = HotkeyConflict.identifier(
-      using: combination, among: store.assignments, excluding: identifier)
-    {
-      NSSound.beep()
-      let alert = NSAlert()
-      alert.messageText = "Shortcut already in use"
-      alert.informativeText =
-        "This shortcut is already assigned to \(otherIdentifier.displayName)."
-      alert.alertStyle = .warning
-      alert.addButton(withTitle: "OK")
-      alert.runModal()
+    if let otherIdentifier = store.conflict(combination, for: identifier) {
+      showConflict(combination, otherIdentifier)
       return
     }
 
     store.update(combination, for: identifier)
+  }
+
+  private func showConflict(_ combination: HotkeyCombination, _ other: HotkeyIdentifier) {
+    NSSound.beep()
+    let alert = NSAlert()
+    alert.messageText = "Shortcut already in use"
+    alert.informativeText =
+      "\(combination.displayString) is already used by \"\(other.displayName)\". Turn that off or give it another "
+      + "shortcut first."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "OK")
+    alert.runModal()
   }
 }

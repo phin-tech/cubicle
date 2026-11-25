@@ -20,5 +20,10 @@ final class PreferencesTabViewController: NSTabViewController {
     spacesTab.label = "Spaces"
     spacesTab.image = NSImage(systemSymbolName: "rectangle.3.group", accessibilityDescription: "Spaces")
     addTabViewItem(spacesTab)
+    let stackingTab = NSTabViewItem(viewController: StackingSettingsViewController())
+    stackingTab.label = "Stacking"
+    stackingTab.identifier = "stacking"
+    stackingTab.image = NSImage(systemSymbolName: "square.stack", accessibilityDescription: "Stacking")
+    addTabViewItem(stackingTab)
   }
 }

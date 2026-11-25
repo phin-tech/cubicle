@@ -42,6 +42,21 @@ enum CommandHandler {
       }
       return CubicleResponse(ok: true, windows: WindowSnapper.listWindows())
     case "gap": return gap(request.argument)
+    case "bind", "bind-window": return bind(request)
+    case "unbind", "unbind-window":
+      return reply(StackManager.shared.unbind(window: request.command == "unbind-window", selector(for: request)))
+    case "cycle":
+      switch request.argument ?? "next" {
+      case "next": return reply(StackManager.shared.cycle(forward: true, selector(for: request)))
+      case "prev", "previous": return reply(StackManager.shared.cycle(forward: false, selector(for: request)))
+      default: return CubicleResponse(ok: false, message: "Usage: cubicle cycle [next|prev]")
+      }
+    case "swap": return swap(request)
+    case "pause", "resume":
+      return reply(StackManager.shared.setPaused(request.command == "pause", everywhere: request.all == true))
+    case "ignore", "unignore":
+      return reply(StackManager.shared.setIgnored(request.command == "ignore", selector(for: request)))
+    case "layout": return CubicleResponse(ok: true, message: StackManager.shared.describeLayout(all: request.all == true))
     default:
       return CubicleResponse(ok: false, message: "Unknown command '\(request.command)'.")
     }
@@ -141,6 +156,39 @@ enum CommandHandler {
     }
     let outcome = WindowSnapper.snap(action, selector(for: request))
     return CubicleResponse(ok: outcome.ok, message: outcome.message)
+  }
+
+  private static func reply(_ outcome: StackManager.Outcome) -> CubicleResponse {
+    CubicleResponse(ok: outcome.ok, message: outcome.message)
+  }
+
+  /// `bind <zone|space>`: a zone name, or "space" to bind to the Space without a zone.
+  private static func bind(_ request: CubicleRequest) -> CubicleResponse {
+    let name = (request.argument ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+    let zone: Zone?
+    if name == "space" || name == "none" {
+      zone = nil
+    } else if let named = Zone(name: name) {
+      zone = named
+    } else {
+      let names = Zone.allCases.map(\.rawValue).joined(separator: ", ")
+      return CubicleResponse(ok: false, message: "Unknown zone '\(name)'. Use one of: \(names), or space.")
+    }
+    return reply(StackManager.shared.bind(zone, window: request.command == "bind-window", selector(for: request)))
+  }
+
+  /// `swap <left|right|up|down|zone>`.
+  private static func swap(_ request: CubicleRequest) -> CubicleResponse {
+    let name = (request.argument ?? "").trimmingCharacters(in: .whitespaces).lowercased()
+    let target: StackManager.SwapTarget
+    if let direction = Zone.Direction(rawValue: name) {
+      target = .direction(direction)
+    } else if let zone = Zone(name: name) {
+      target = .zone(zone)
+    } else {
+      return CubicleResponse(ok: false, message: "Usage: cubicle swap <left|right|up|down|zone>")
+    }
+    return reply(StackManager.shared.swap(target, selector(for: request)))
   }
 
   private static func gap(_ argument: String?) -> CubicleResponse {

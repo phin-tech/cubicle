@@ -62,10 +62,13 @@ enum WindowSnapper {
 
     if action == .restore {
       guard let restore = history.takeRestore(window.windowID) else {
+        // Restore still lets go of the window.
+        StackManager.shared.didSnap(window, action: action, frame: current)
         return Outcome(ok: true, message: "\(name) has not been snapped, so there is nothing to restore.")
       }
       // A restore can take a window back to another display, so it goes through the resizing path as is.
-      apply(restore, to: window, visible: visibleFrame(containing: restore) ?? restore, gap: 0, align: false)
+      let result = apply(restore, to: window, visible: visibleFrame(containing: restore) ?? restore, gap: 0, align: false)
+      StackManager.shared.didSnap(window, action: action, frame: result ?? restore)
       return Outcome(ok: true, message: "Restored \(name).")
     }
 
@@ -78,6 +81,7 @@ enum WindowSnapper {
     }
     // Pressing a snap again does nothing.
     if SnapGeometry.roughlyEqual(current, target) {
+      StackManager.shared.didSnap(window, action: action, frame: current)
       return Outcome(ok: true, message: "\(name) is already there.")
     }
 
@@ -87,12 +91,32 @@ enum WindowSnapper {
     pruneHistory()
 
     guard let result else { return Outcome(ok: false, message: "\(name) did not move.") }
+    StackManager.shared.didSnap(window, action: action, frame: result)
     if abs(result.width - target.width) >= SnapGeometry.tolerance
       || abs(result.height - target.height) >= SnapGeometry.tolerance
     {
       return Outcome(ok: true, message: "\(action.displayName): \(name) kept its own size (\(Int(result.width))×\(Int(result.height))).")
     }
     return Outcome(ok: true, message: "\(action.displayName): \(name).")
+  }
+
+  /// Puts a window in `zone`'s rectangle on the display it is on, as the matching snap would (Restore then
+  /// returns it to the frame it had before). Returns where it ended up, or nil if it can't be placed.
+  static func place(_ window: WindowMover.Target, in zone: Zone) -> CGRect? {
+    setTimeout(on: window)
+    guard refusal(for: window.window) == nil, let current = WindowMover.frame(of: window.window),
+      let visible = visibleFrame(containing: current)
+    else { return nil }
+    let gap = CGFloat(Self.gap)
+    guard let target = SnapGeometry.frame(for: zone.snapAction, window: current, visible: visible, gap: gap) else {
+      return nil
+    }
+    if SnapGeometry.roughlyEqual(current, target) { return current }
+    history.willSnap(window.windowID, from: current)
+    let result = apply(target, to: window, visible: visible, gap: gap, align: true)
+    history.didSnap(window.windowID, to: result ?? target)
+    pruneHistory()
+    return result
   }
 
   /// Why Cubicle won't touch this window, if it won't.

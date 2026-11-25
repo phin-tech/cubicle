@@ -216,7 +216,8 @@ struct OnboardingView: View {
       shortcutRow("Move one Space left", .left)
       shortcutRow("Move one Space right", .right)
       Toggle(
-        "Window snapping shortcuts: ⌃⌥ + arrows for halves, U I J K for quarters, ↩ maximize, C center, ⌫ restore",
+        "Window shortcuts: ⌃⌥ + arrows for halves, U I J K for quarters, ↩ maximize, C center, ⌫ restore, "
+          + "] and [ to cycle a stack, ⇧ arrows to swap stacks",
         isOn: Binding(get: { model.snapShortcutsEnabled }, set: { model.setSnapShortcutsEnabled($0) }))
       Text("Click a box, then press the keys you want. Esc cancels. Every shortcut, including jumping straight to "
         + "Space 1 to 16, is in Settings > Keyboard.")

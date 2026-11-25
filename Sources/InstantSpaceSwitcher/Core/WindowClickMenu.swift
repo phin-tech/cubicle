@@ -139,6 +139,8 @@ final class WindowClickMenu: NSObject {
       menu.addItem(.separator())
     }
     snapItems(for: window).forEach(menu.addItem)
+    menu.addItem(.separator())
+    stackItems(for: window).forEach(menu.addItem)
     menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
   }
 
@@ -166,6 +168,74 @@ final class WindowClickMenu: NSObject {
   @objc private func pickSnap(_ sender: NSMenuItem) {
     guard let choice = sender.representedObject as? SnapChoice else { return }
     if !WindowSnapper.snap(choice.action, choice.window).ok { NSSound.beep() }
+  }
+
+  /// A "Stack" heading, then binding submenus for the window's app and for the window itself, and the ignore switch.
+  func stackItems(for window: WindowMover.Target) -> [NSMenuItem] {
+    let header = NSMenuItem(title: "Stack", action: nil, keyEquivalent: "")
+    header.isEnabled = false
+    let current = StackManager.shared.bindings(for: window)
+    let ignore = NSMenuItem(
+      title: current.ignored ? "Stop Ignoring \(window.appName)" : "Ignore \(window.appName)",
+      action: #selector(pickStack(_:)), keyEquivalent: "")
+    ignore.target = self
+    ignore.representedObject = StackChoice(window: window, kind: .ignore(!current.ignored))
+    guard !current.ignored else { return [header, ignore] }
+    return [
+      header,
+      bindMenu(title: "Bind \(window.appName) to", window: window, binding: current.app, wholeWindow: false),
+      bindMenu(title: "Bind This Window to", window: window, binding: current.window, wholeWindow: true),
+      ignore,
+    ]
+  }
+
+  private func bindMenu(title: String, window: WindowMover.Target, binding: StackBinding?, wholeWindow: Bool) -> NSMenuItem {
+    let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+    let submenu = NSMenu(title: title)
+    submenu.autoenablesItems = false
+    func add(_ title: String, _ kind: StackChoice.Kind, checked: Bool) {
+      let entry = NSMenuItem(title: title, action: #selector(pickStack(_:)), keyEquivalent: "")
+      entry.target = self
+      entry.representedObject = StackChoice(window: window, kind: kind)
+      entry.state = checked ? .on : .off
+      submenu.addItem(entry)
+    }
+    for zone in Zone.allCases {
+      add(zone.displayName, .bind(zone, window: wholeWindow), checked: binding != nil && binding?.zone == zone)
+    }
+    add("This Space Only (No Zone)", .bind(nil, window: wholeWindow), checked: binding != nil && binding?.zone == nil)
+    if binding != nil {
+      submenu.addItem(.separator())
+      add("Remove Binding", .unbind(window: wholeWindow), checked: false)
+    }
+    item.submenu = submenu
+    return item
+  }
+
+  private final class StackChoice: NSObject {
+    enum Kind {
+      case bind(Zone?, window: Bool)
+      case unbind(window: Bool)
+      case ignore(Bool)
+    }
+    let window: WindowMover.Target
+    let kind: Kind
+    init(window: WindowMover.Target, kind: Kind) {
+      self.window = window
+      self.kind = kind
+    }
+  }
+
+  @objc private func pickStack(_ sender: NSMenuItem) {
+    guard let choice = sender.representedObject as? StackChoice else { return }
+    let selector = WindowSnapper.Selector.window(choice.window.windowID)
+    let outcome: StackManager.Outcome
+    switch choice.kind {
+    case .bind(let zone, let window): outcome = StackManager.shared.bind(zone, window: window, selector)
+    case .unbind(let window): outcome = StackManager.shared.unbind(window: window, selector)
+    case .ignore(let ignored): outcome = StackManager.shared.setIgnored(ignored, selector)
+    }
+    if !outcome.ok { NSSound.beep() }
   }
 
   /// A heading naming the window, then one item per Space on its display (its own Space checked and disabled),

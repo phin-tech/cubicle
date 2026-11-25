@@ -50,6 +50,21 @@ final class ShortcutChoiceTests: XCTestCase {
     XCTAssertNil(HotkeyConflict.identifier(using: .defaultLeft, among: defaults, excluding: .left))
   }
 
+  /// Hyper+Space is "Send window to space…"'s default, but that action starts off, so it isn't using the key.
+  func testATurnedOffShortcutIsFreeToReuse() {
+    let store = HotkeyStore(defaults: UserDefaults(suiteName: "ShortcutChoiceTests.\(UUID().uuidString)")!)
+    XCTAssertFalse(store.isEnabled(.sendWindow))
+    XCTAssertNil(store.conflict(.defaultSendWindow, for: .showGrid))
+    store.setEnabled(true, for: .sendWindow)
+    XCTAssertEqual(store.conflict(.defaultSendWindow, for: .showGrid), .sendWindow)
+  }
+
+  func testTurningAShortcutOnChecksTheOnesAlreadyOn() {
+    let store = HotkeyStore(defaults: UserDefaults(suiteName: "ShortcutChoiceTests.\(UUID().uuidString)")!)
+    store.update(.defaultSendWindow, for: .showGrid)
+    XCTAssertEqual(store.conflict(store.combination(for: .sendWindow), for: .sendWindow), .showGrid)
+  }
+
   func testAnUnusedShortcutHasNoConflict() {
     let unused = HotkeyCombination(keyCode: 0, modifiers: 0, displayKey: "A", keyEquivalent: "a")
     XCTAssertNil(HotkeyConflict.identifier(using: unused, among: defaults, excluding: .showGrid))

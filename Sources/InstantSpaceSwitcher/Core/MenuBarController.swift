@@ -10,6 +10,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private var rightMenuItem: NSMenuItem?
   private var spacesMenuItem: NSMenuItem?
   private var moveWindowMenuItem: NSMenuItem?
+  private var stackingMenuItem: NSMenuItem?
   private var cachedSpaceInfo: ISSSpaceInfo?
   private var refreshWorkItem: DispatchWorkItem?
   private var cancellables = Set<AnyCancellable>()
@@ -92,6 +93,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     moveItem.image = NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil)
     menu.addItem(moveItem)
     moveWindowMenuItem = moveItem
+
+    let stackingItem = NSMenuItem(title: "Stacking", action: nil, keyEquivalent: "")
+    let stackingSubmenu = NSMenu(title: "Stacking")
+    stackingSubmenu.delegate = self
+    stackingSubmenu.autoenablesItems = false
+    stackingItem.submenu = stackingSubmenu
+    stackingItem.image = NSImage(systemSymbolName: "square.stack", accessibilityDescription: nil)
+    menu.addItem(stackingItem)
+    stackingMenuItem = stackingItem
 
     menu.addItem(NSMenuItem.separator())
 
@@ -307,9 +317,44 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     items.forEach(submenu.addItem)
   }
 
+  /// Pause switches for the Space under the cursor and for every Space, and the way to the layouts.
+  private func updateStackingMenu(_ submenu: NSMenu) {
+    submenu.removeAllItems()
+    let store = StackingStore.shared
+    let key = StackManager.shared.spaceKeyUnderCursor()
+    let here = NSMenuItem(title: "Pause on This Space", action: #selector(togglePauseHere(_:)), keyEquivalent: "")
+    here.target = self
+    here.isEnabled = key != nil
+    here.state = key.map { store.settings.pausedSpaces.contains($0) } == true ? .on : .off
+    submenu.addItem(here)
+    let everywhere = NSMenuItem(title: "Pause Everywhere", action: #selector(togglePauseEverywhere(_:)), keyEquivalent: "")
+    everywhere.target = self
+    everywhere.state = store.settings.pausedEverywhere ? .on : .off
+    submenu.addItem(everywhere)
+    submenu.addItem(.separator())
+    let layouts = NSMenuItem(title: "Layouts…", action: #selector(openStackingSettings(_:)), keyEquivalent: "")
+    layouts.target = self
+    submenu.addItem(layouts)
+  }
+
+  @objc private func openStackingSettings(_ sender: Any?) {
+    delegate?.menuBarControllerDidRequestStackingSettings(self)
+  }
+
+  @objc private func togglePauseHere(_ sender: NSMenuItem) {
+    _ = StackManager.shared.setPaused(sender.state != .on, everywhere: false)
+  }
+
+  @objc private func togglePauseEverywhere(_ sender: NSMenuItem) {
+    _ = StackManager.shared.setPaused(sender.state != .on, everywhere: true)
+  }
+
   func menuNeedsUpdate(_ menu: NSMenu) {
     if let submenu = moveWindowMenuItem?.submenu, menu === submenu {
       return updateMoveWindowMenu(submenu)
+    }
+    if let submenu = stackingMenuItem?.submenu, menu === submenu {
+      return updateStackingMenu(submenu)
     }
     updateVirtualDisplayItem()
     if menu === statusItem.menu || menu === spacesMenuItem?.submenu {
@@ -389,6 +434,7 @@ protocol MenuBarControllerDelegate: AnyObject {
   func menuBarControllerDidRequestSwitchLeft(_ controller: MenuBarController)
   func menuBarControllerDidRequestSwitchRight(_ controller: MenuBarController)
   func menuBarControllerDidRequestPreferences(_ controller: MenuBarController)
+  func menuBarControllerDidRequestStackingSettings(_ controller: MenuBarController)
   func menuBarController(
     _ controller: MenuBarController, didRequestSwitchToSpaceAtIndex index: UInt32)
   func menuBarControllerDidRequestRefresh(_ controller: MenuBarController)

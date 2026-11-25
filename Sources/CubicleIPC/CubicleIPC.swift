@@ -15,10 +15,12 @@ public struct CubicleRequest: Codable, Equatable {
   public var app: String?
   public var window: UInt32?
   public var previous: Bool?
+  /// For `pause`, `resume` and `layout`: every Space rather than the current one.
+  public var all: Bool?
 
   public init(
     command: String, argument: String? = nil, here: Bool? = nil, query: String? = nil,
-    app: String? = nil, window: UInt32? = nil, previous: Bool? = nil
+    app: String? = nil, window: UInt32? = nil, previous: Bool? = nil, all: Bool? = nil
   ) {
     self.command = command
     self.argument = argument
@@ -27,6 +29,7 @@ public struct CubicleRequest: Codable, Equatable {
     self.app = app
     self.window = window
     self.previous = previous
+    self.all = all
   }
 }
 

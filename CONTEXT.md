@@ -34,6 +34,12 @@ The set of **Bindings** saved for one Space. A Space with no bindings has an emp
 The windows in one **Zone** on one Space, in a fixed cycle order: the windows of the apps bound to it (in binding order, then each app's windows in the order they opened), followed by any windows snapped into it. Every window of a bound app belongs in that zone, including windows opened later and after the app relaunches, unless it is a **Pulled-out window**. A stack is cycled window by window, not app by app.
 _Avoid_: group, set
 
+**Cycle**:
+Bringing the next or previous window in the focused window's **Stack** to the front and focusing it, wrapping around at the ends. It changes no order and moves no window.
+
+**Swap**:
+Trading the whole **Stacks** of two **Zones** on one Space, usually neighbours (the left and right halves, or two quarters side by side): every window moves to the other zone and keeps its cycle order. Like a **Snap**, a swap changes no **Binding**: a bound window that lands outside its own zone is held there until it closes or is moved by hand, and one that lands in its own zone is simply home.
+
 **Floating window**:
 A window that is not in any **Zone**: it was never snapped and its app has no **Binding** on that Space, or the user moved or resized it by hand (including macOS's own tiling).
 
@@ -41,7 +47,8 @@ A window that is not in any **Zone**: it was never snapped and its app has no **
 A window of a bound app that the user took out of its **Stack**, by moving or resizing it by hand (it becomes a **Floating window**) or by snapping it to another zone (it joins that zone's stack until it closes or is moved by hand, without changing any **Binding**).
 
 **Binding**:
-The saved link between an app and a **Stack** on a particular Space. An app has at most one binding per Space; binding it again moves it to the new zone. The same app may be bound on several Spaces.
+A saved rule that places an app's windows, or one particular window, on a particular Space, optionally in a **Zone** (joining its **Stack**). An app has at most one app binding per Space; binding it again moves it to the new zone. The same app may be bound on several Spaces. A window binding wins over its app's binding. A window binding recognises its window again after the app restarts by the window's document, else its title, else its place in the app's window order.
+_Avoid_: home, assignment, pin
 
 **Ignored app**:
 An app on the user's single, global ignore list. It cannot be bound, its windows never join a **Zone**, and automatic placement leaves it alone; its windows can still be snapped on request (frame only). Sheets, dialogs, fixed-size panels and native full-screen windows are always treated this way without being listed.

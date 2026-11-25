@@ -22,6 +22,16 @@ final class PreferencesWindowController: NSWindowController {
     panel.delegate = self
   }
 
+  /// Opens Settings on the tab whose identifier is `tab` ("stacking"), or where it was left.
+  func present(tab: String) {
+    if let tabs = window?.contentViewController as? NSTabViewController,
+      let index = tabs.tabViewItems.firstIndex(where: { $0.identifier as? String == tab })
+    {
+      tabs.selectedTabViewItemIndex = index
+    }
+    present()
+  }
+
   func present() {
     // Check accessibility permissions
     if !AXIsProcessTrusted() {
