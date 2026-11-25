@@ -11,21 +11,34 @@ private final class FlippedStackView: NSStackView {
 final class StashSettingsViewController: NSViewController {
   private let stack = FlippedStackView()
   private let lookPopUp = NSPopUpButton()
+  private let openPopUp = NSPopUpButton()
+  private let hidePopUp = NSPopUpButton()
+  private let minimizePopUp = NSPopUpButton()
   private let shortcuts = NSTextField(labelWithString: "")
   private var observers: [NSObjectProtocol] = []
   private var cancellables = Set<AnyCancellable>()
 
   override func loadView() {
-    view = NSView(frame: NSRect(x: 0, y: 0, width: 550, height: 380))
+    view = NSView(frame: NSRect(x: 0, y: 0, width: 550, height: 470))
     let description = NSTextField(wrappingLabelWithString:
-      "Stash a window against the left, right or top edge. It tucks away behind a Tab there, on every workspace; "
-      + "hover the Tab to pop it out, click to keep it out, drag the Tab along the edge to move it, and right-click "
-      + "it for more.")
+      "Stash a window against the left, right or top edge. It tucks away behind a Tab there, on every workspace, and "
+      + "comes out when you point at or click the Tab. Drag a Tab to move it, and right-click it for more.")
     description.textColor = .secondaryLabelColor
 
     for look in StashTabLook.allCases { lookPopUp.addItem(withTitle: look.displayName) }
     lookPopUp.target = self
     lookPopUp.action = #selector(lookChanged(_:))
+    for open in StashOpen.allCases { openPopUp.addItem(withTitle: open.displayName) }
+    openPopUp.target = self
+    openPopUp.action = #selector(openChanged(_:))
+    for hide in StashHide.allCases { hidePopUp.addItem(withTitle: hide.displayName) }
+    hidePopUp.target = self
+    hidePopUp.action = #selector(hideChanged(_:))
+    minimizePopUp.addItem(withTitle: "Minimizes the window")
+    for edge in StashEdge.allCases { minimizePopUp.addItem(withTitle: edge.displayName) }
+    minimizePopUp.target = self
+    minimizePopUp.action = #selector(minimizeChanged(_:))
+    minimizePopUp.toolTip = "Hold any modifier key while clicking to minimize as usual."
     shortcuts.textColor = .secondaryLabelColor
 
     let scroll = NSScrollView()
@@ -39,8 +52,11 @@ final class StashSettingsViewController: NSViewController {
     scroll.documentView = stack
 
     let lookRow = row([NSTextField(labelWithString: "Tabs:"), lookPopUp])
+    let openRow = row([NSTextField(labelWithString: "Open a window by:"), openPopUp])
+    let hideRow = row([NSTextField(labelWithString: "Hide it again when:"), hidePopUp])
+    let minimizeRow = row([NSTextField(labelWithString: "The minimize button:"), minimizePopUp])
     let shortcutsRow = row([NSTextField(labelWithString: "Shortcuts:"), shortcuts])
-    for subview in [description, lookRow, shortcutsRow, scroll] as [NSView] {
+    for subview in [description, lookRow, openRow, hideRow, minimizeRow, shortcutsRow, scroll] as [NSView] {
       subview.translatesAutoresizingMaskIntoConstraints = false
       view.addSubview(subview)
     }
@@ -50,7 +66,13 @@ final class StashSettingsViewController: NSViewController {
       description.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
       lookRow.topAnchor.constraint(equalTo: description.bottomAnchor, constant: 14),
       lookRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-      shortcutsRow.topAnchor.constraint(equalTo: lookRow.bottomAnchor, constant: 8),
+      openRow.topAnchor.constraint(equalTo: lookRow.bottomAnchor, constant: 8),
+      openRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      hideRow.topAnchor.constraint(equalTo: openRow.bottomAnchor, constant: 8),
+      hideRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      minimizeRow.topAnchor.constraint(equalTo: hideRow.bottomAnchor, constant: 8),
+      minimizeRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      shortcutsRow.topAnchor.constraint(equalTo: minimizeRow.bottomAnchor, constant: 8),
       shortcutsRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
       scroll.topAnchor.constraint(equalTo: shortcutsRow.bottomAnchor, constant: 16),
       scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
@@ -99,6 +121,9 @@ final class StashSettingsViewController: NSViewController {
 
   private func show() {
     lookPopUp.selectItem(at: StashTabLook.allCases.firstIndex(of: Stash.shared.look) ?? 0)
+    openPopUp.selectItem(at: StashOpen.allCases.firstIndex(of: Stash.shared.openOn) ?? 0)
+    hidePopUp.selectItem(at: StashHide.allCases.firstIndex(of: Stash.shared.hideWhen) ?? 0)
+    minimizePopUp.selectItem(at: MinimizeCatcher.edge.flatMap { StashEdge.allCases.firstIndex(of: $0) }.map { $0 + 1 } ?? 0)
     let store = HotkeyStore.shared
     shortcuts.stringValue = [HotkeyIdentifier.stashLeft, .stashRight, .stashTop].map { id in
       let keys = store.isEnabled(id) ? store.combination(for: id).displayString : "off"
@@ -219,6 +244,21 @@ final class StashSettingsViewController: NSViewController {
   @objc private func lookChanged(_ sender: NSPopUpButton) {
     guard StashTabLook.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
     UserDefaults.standard.set(StashTabLook.allCases[sender.indexOfSelectedItem].rawValue, forKey: StashTabLook.defaultsKey)
+  }
+
+  @objc private func openChanged(_ sender: NSPopUpButton) {
+    guard StashOpen.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
+    UserDefaults.standard.set(StashOpen.allCases[sender.indexOfSelectedItem].rawValue, forKey: StashOpen.defaultsKey)
+  }
+
+  @objc private func hideChanged(_ sender: NSPopUpButton) {
+    guard StashHide.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
+    UserDefaults.standard.set(StashHide.allCases[sender.indexOfSelectedItem].rawValue, forKey: StashHide.defaultsKey)
+  }
+
+  @objc private func minimizeChanged(_ sender: NSPopUpButton) {
+    let index = sender.indexOfSelectedItem - 1
+    MinimizeCatcher.edge = StashEdge.allCases.indices.contains(index) ? StashEdge.allCases[index] : nil
   }
 
   @objc private func edgeChanged(_ sender: NSPopUpButton) {

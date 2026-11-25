@@ -34,7 +34,14 @@ final class Stash {
 
   private var entries: [Entry] = []
   /// What a window being dragged would land on if let go now: display, edge and position.
-  private var dropTarget: (display: String, edge: StashEdge, position: CGFloat)?
+  private var dropTarget: Drop?
+
+  private enum Drop {
+    /// Onto an edge, at a place along it.
+    case edge(display: String, edge: StashEdge, position: CGFloat)
+    /// Away from the edges: the window is unstashed, here.
+    case unstash(CGRect)
+  }
   private var elements: [UInt32: AXUIElement] = [:]
   /// The window popped out, where it was put, and whether a click is keeping it out.
   private var out: UInt32?
@@ -42,6 +49,8 @@ final class Stash {
   private var pinned = false
   /// The app in front before a window popped out, to go back to when it tucks away.
   private var previousApp: NSRunningApplication?
+  /// The app Cubicle brought forward itself, popping one of its windows out, and when: that isn't you switching to it.
+  private var raisedByUs: (pid: pid_t, at: Date)?
   private var panels: [String: StashPanel] = [:]
   private var monitors: [Any] = []
   private var observers: [NSObjectProtocol] = []
@@ -55,6 +64,17 @@ final class Stash {
   var look: StashTabLook {
     StashTabLook(rawValue: UserDefaults.standard.string(forKey: StashTabLook.defaultsKey) ?? "") ?? .icon
   }
+
+  var openOn: StashOpen {
+    StashOpen(rawValue: UserDefaults.standard.string(forKey: StashOpen.defaultsKey) ?? "") ?? .hover
+  }
+
+  var hideWhen: StashHide {
+    StashHide(rawValue: UserDefaults.standard.string(forKey: StashHide.defaultsKey) ?? "") ?? .mouseOut
+  }
+
+  /// Whether the window that's out stays out when the mouse leaves it: clicked to keep it, or hidden only by a click.
+  private var keepsOut: Bool { pinned || hideWhen == .clickOut }
 
   func contains(_ id: UInt32) -> Bool { entries.contains { $0.id == id } }
 
@@ -98,6 +118,12 @@ final class Stash {
     observers.append(NSWorkspace.shared.notificationCenter.addObserver(
       forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
     ) { _ in MainActor.assumeIsolated { Stash.shared.prune() } })
+    observers.append(NSWorkspace.shared.notificationCenter.addObserver(
+      forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+    ) { notification in
+      let pid = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
+      MainActor.assumeIsolated { Stash.shared.appActivated(pid) }
+    })
     for entry in entries { tuck(entry.id, refocus: false) }
     refresh()
   }
@@ -194,6 +220,15 @@ final class Stash {
 
   /// Puts a stashed window back where it was before it was stashed, on the workspace showing there.
   func unstash(_ id: UInt32, keepingFrame: Bool = false) -> WindowSnapper.Outcome {
+    unstash(id, keepingFrame: keepingFrame, to: nil)
+  }
+
+  /// Unstashes a window into `frame`: where its Tab was torn off and let go.
+  func unstash(_ id: UInt32, to frame: CGRect) -> WindowSnapper.Outcome {
+    unstash(id, keepingFrame: false, to: frame)
+  }
+
+  private func unstash(_ id: UInt32, keepingFrame: Bool, to frame: CGRect?) -> WindowSnapper.Outcome {
     guard let index = entries.firstIndex(where: { $0.id == id }) else {
       return .init(ok: false, message: "That window isn't stashed.")
     }
@@ -205,7 +240,7 @@ final class Stash {
       refresh()
     }
     guard var window = target(id) else { return .init(ok: true, message: "The stashed window has closed.") }
-    if !keepingFrame { WindowSnapper.setFrame(Self.onScreen(entry.home), of: window) }
+    if !keepingFrame { WindowSnapper.setFrame(frame ?? Self.onScreen(entry.home), of: window) }
     window = WindowMover.target(for: window.window) ?? window
     VirtualWorkspaces.shared.adopt(window)
     raise(window)
@@ -236,6 +271,11 @@ final class Stash {
     move(id, display: entry.display, edge: edge, position: entry.along)
   }
 
+  /// Tucks a stashed window away, if it's out.
+  func tuckAway(_ id: UInt32) {
+    if out == id { tuck(id, refocus: true) }
+  }
+
   func unstashAll() {
     for entry in entries { _ = unstash(entry.id) }
   }
@@ -257,6 +297,24 @@ final class Stash {
 
   // MARK: - Popping out and tucking away
 
+  /// ⌘-Tab, the Dock or anything else bringing an app forward: if the window it focuses is stashed, it comes out and
+  /// stays out, as if its Tab were clicked. Going to another app tucks away the window that's out.
+  private func appActivated(_ pid: pid_t?) {
+    guard let pid, pid != ProcessInfo.processInfo.processIdentifier, press == nil, dragging == nil else { return }
+    if let raised = raisedByUs, raised.pid == pid, Date().timeIntervalSince(raised.at) < 1 {
+      raisedByUs = nil
+      return
+    }
+    if let id = out, entry(id)?.pid != pid {
+      tuck(id, refocus: false)
+    }
+    guard entries.contains(where: { $0.pid == pid }), let window = WindowMover.focusedWindow(), window.pid == pid,
+      contains(window.windowID)
+    else { return }
+    if out != window.windowID { popOut(window.windowID) }
+    pinned = true
+  }
+
   private func popOut(_ id: UInt32) {
     cancelTuck()
     guard out != id else { return }
@@ -272,6 +330,7 @@ final class Stash {
     WindowSnapper.setFrame(frame, of: window)
     out = id
     outFrame = WindowMover.frame(of: window.window) ?? frame
+    raisedByUs = (entry.pid, Date())
     raise(window)
     refresh()
   }
@@ -327,10 +386,10 @@ final class Stash {
     guard !entries.isEmpty, press == nil else { return }
     let mouse = Self.mouse()
     if let hit = tab(at: mouse) {
-      if !pinned { popOut(hit) } else { cancelTuck() }
+      if openOn == .hover && !pinned && hit != out { popOut(hit) } else { cancelTuck() }
       return
     }
-    guard let id = out, !pinned else { return }
+    guard let id = out, !keepsOut else { return }
     if inOutZone(mouse, frame: outFrame) { cancelTuck() } else { scheduleTuck(id) }
   }
 
@@ -340,7 +399,7 @@ final class Stash {
       MainActor.assumeIsolated {
         let stash = Stash.shared
         stash.pendingTuck = nil
-        guard stash.out == id, !stash.pinned else { return }
+        guard stash.out == id, !stash.keepsOut else { return }
         // Not while a button is down (moving or resizing the window), and judged by where the window is now.
         let live = stash.elements[id].flatMap(WindowMover.frame(of:))
         if NSEvent.pressedMouseButtons != 0 || stash.inOutZone(Self.mouse(), frame: live ?? stash.outFrame) { return }
@@ -362,8 +421,8 @@ final class Stash {
     return place.strip.insetBy(dx: -4, dy: -4).contains(point)
   }
 
-  /// A click in another app: into the window that's out keeps it out; anywhere else tucks it away. Letting go after
-  /// dragging the window away from the edge unstashes it where you left it.
+  /// A click in another app: into the window that's out keeps it out (when windows open on hover); anywhere else tucks
+  /// it away. Letting go after dragging the window away from the edge unstashes it where you left it.
   private func clickedElsewhere(_ type: NSEvent.EventType) {
     guard let id = out, let element = elements[id] else { return }
     let live = WindowMover.frame(of: element)
@@ -376,7 +435,7 @@ final class Stash {
       return
     }
     if let live, live.contains(Self.mouse()) {
-      pinned = true
+      if openOn == .hover { pinned = true }
       cancelTuck()
     } else {
       tuck(id, refocus: false)
@@ -418,14 +477,19 @@ final class Stash {
       if let id = dragging {
         dragging = nil
         ghost.orderOut(nil)
-        if let drop = dropTarget { move(id, display: drop.display, edge: drop.edge, position: drop.position) }
+        switch dropTarget {
+        case .edge(let display, let edge, let position)?: move(id, display: display, edge: edge, position: position)
+        case .unstash(let frame)?: _ = unstash(id, to: frame)
+        case nil: break
+        }
         dropTarget = nil
         refresh()
-      } else if out == press.id && pinned {
+      } else if out == press.id && (pinned || openOn == .click) {
         tuck(press.id, refocus: true)
       } else {
-        popOut(press.id)
-        pinned = true
+        // On hover, a click keeps it out; on click, it opened by the click and hides as the setting says.
+        if out != press.id { popOut(press.id) }
+        pinned = openOn == .hover
       }
       return true
     default:
@@ -443,9 +507,17 @@ final class Stash {
     else { return }
     let edge = StashLayout.nearestEdge(to: mouse, in: visible)
     let layout = StashLayout(edge: edge, look: look, visible: visible)
-    let rect = layout.tab(following: mouse)
-    let onto = placed.first { $0.display == screen.uuid && $0.edge == edge && $0.strip.intersects(rect) }
-    dropTarget = (screen.uuid, edge, onto?.position ?? layout.position(at: mouse))
+    let rect: CGRect
+    if StashLayout.isTornOff(mouse, in: visible) {
+      // Away from the edges, it floats with the mouse; let go, and the window is back where it's dropped.
+      let size = layout.tabSize
+      rect = CGRect(x: mouse.x - size.width / 2, y: mouse.y - size.height / 2, width: size.width, height: size.height)
+      dropTarget = .unstash(StashLayout.torn(entry.size, at: mouse, in: visible))
+    } else {
+      rect = layout.tab(following: mouse)
+      let onto = placed.first { $0.display == screen.uuid && $0.edge == edge && $0.strip.intersects(rect) }
+      dropTarget = .edge(display: screen.uuid, edge: edge, position: onto?.position ?? layout.position(at: mouse))
+    }
     var item = self.item(for: entry, among: [entry])
     item.isDragged = true
     ghost.show(

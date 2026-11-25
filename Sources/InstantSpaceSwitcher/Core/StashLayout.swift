@@ -19,6 +19,36 @@ enum StashTabLook: String, CaseIterable {
   }
 }
 
+/// What brings a stashed window out of its Tab.
+enum StashOpen: String, CaseIterable {
+  case hover
+  case click
+
+  static let defaultsKey = "stashOpenOn"
+
+  var displayName: String {
+    switch self {
+    case .hover: return "Pointing at its Tab"
+    case .click: return "Clicking its Tab"
+    }
+  }
+}
+
+/// What tucks a popped-out window away again (besides clicking its Tab).
+enum StashHide: String, CaseIterable {
+  case mouseOut
+  case clickOut
+
+  static let defaultsKey = "stashHideWhen"
+
+  var displayName: String {
+    switch self {
+    case .mouseOut: return "The mouse leaves it"
+    case .clickOut: return "You click somewhere else"
+    }
+  }
+}
+
 /// Where stash Tabs and popped-out windows go on one edge of one display. Pure maths, in top-left-origin global
 /// coordinates as Accessibility uses, so it can be tested without windows.
 struct StashLayout {
@@ -97,6 +127,25 @@ struct StashLayout {
   func slot(at point: CGPoint) -> StashSlot {
     let p = position(at: point)
     return p < 1.0 / 3 ? .start : p > 2.0 / 3 ? .end : .middle
+  }
+
+  /// How far from every edge a dragged Tab has to be to tear off, unstashing its window where it's let go.
+  static let tearOff: CGFloat = 120
+
+  /// Whether a Tab dragged to `point` has come away from the edges: farther than `tearOff` from the left, right and
+  /// top of `visible`.
+  static func isTornOff(_ point: CGPoint, in visible: CGRect) -> Bool {
+    min(abs(point.x - visible.minX), abs(visible.maxX - point.x), abs(point.y - visible.minY)) > tearOff
+  }
+
+  /// Where a window of `size` goes when its Tab is torn off and let go at `point`: its title bar under the mouse,
+  /// kept on the display and shrunk to fit it.
+  static func torn(_ size: CGSize, at point: CGPoint, in visible: CGRect) -> CGRect {
+    let width = min(size.width, visible.width)
+    let height = min(size.height, visible.height)
+    let x = max(visible.minX, min(point.x - width / 2, visible.maxX - width))
+    let y = max(visible.minY, min(point.y - 14, visible.maxY - height))
+    return CGRect(x: x, y: y, width: width, height: height)
   }
 
   /// The edge of `visible` nearest `point`. The bottom is never one: a point nearest it goes to whichever of the

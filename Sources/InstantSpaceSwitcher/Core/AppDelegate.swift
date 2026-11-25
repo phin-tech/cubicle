@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     FullScreen.shared.start()
     // Before the workspaces, so they leave stashed windows alone.
     Stash.shared.start()
+    MinimizeCatcher.shared.update()
     VirtualWorkspaces.shared.start()
     FullScreen.shared.didStartWorkspaces()
     SwipeSwitcher.shared.setEnabled(SwipeSwitcher.isEnabledSetting)

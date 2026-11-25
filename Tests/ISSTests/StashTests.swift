@@ -119,6 +119,18 @@ final class StashLayoutTests: XCTestCase {
     XCTAssertEqual(StashLayout.nearestEdge(to: CGPoint(x: 300, y: 890), in: visible), .left)
   }
 
+  func testATabDraggedAwayFromTheEdgesTearsOff() {
+    XCTAssertFalse(StashLayout.isTornOff(CGPoint(x: 1400, y: 500), in: visible), "near the right edge")
+    XCTAssertFalse(StashLayout.isTornOff(CGPoint(x: 700, y: 100), in: visible), "near the top")
+    XCTAssertTrue(StashLayout.isTornOff(CGPoint(x: 700, y: 500), in: visible))
+    // Its window lands with its title bar under the mouse, on the display.
+    let frame = StashLayout.torn(CGSize(width: 600, height: 400), at: CGPoint(x: 700, y: 500), in: visible)
+    XCTAssertEqual(frame.midX, 700)
+    XCTAssertEqual(frame.minY, 486)
+    let low = StashLayout.torn(CGSize(width: 600, height: 400), at: CGPoint(x: 100, y: 880), in: visible)
+    XCTAssertTrue(visible.contains(low))
+  }
+
   func testSlotNames() {
     XCTAssertEqual(StashSlot(name: "bottom"), .end)
     XCTAssertEqual(StashSlot(name: "Left"), .start)
