@@ -372,6 +372,7 @@ final class VirtualWorkspaces {
   /// (AeroSpace #1305; Tessel measured 12/12 glitchy switches before this ordering, 0/12 after, tessel #33).
   private func move(park parking: [UInt32], unpark unparking: [UInt32], between: () -> Void = {}) {
     let screens = Self.screens()
+    FullScreen.shared.willShow(unparking)
     var incoming: [Job] = []
     for id in Self.frontToBack(unparking) {
       guard let member = members[id], let frame = member.parkedFrame else { continue }
@@ -472,6 +473,12 @@ final class VirtualWorkspaces {
 
   func isParked(_ id: UInt32) -> Bool {
     members[id]?.parkedFrame != nil
+  }
+
+  /// Whether the window is on a workspace that's showing (a window Cubicle doesn't manage counts as showing).
+  func isShowing(_ id: UInt32) -> Bool {
+    guard let member = members[id] else { return true }
+    return member.workspace == activeIndex(member.display) && member.parkedFrame == nil
   }
 
   // MARK: - Learning windows

@@ -60,6 +60,30 @@ enum WindowSnapper {
     }
     let name = window.displayName
 
+    // Full Screen again, or any other snap, takes a full-screen window out. The menu bar may come back, and the
+    // usable area only shrinks once Cubicle hears about it, so a snap that needs it waits a moment.
+    if FullScreen.shared.contains(window.windowID) {
+      let action = action == .fullScreen ? SnapAction.restore : action
+      if FullScreen.shared.leave(window.windowID) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { snap(action, window) }
+        return Outcome(ok: true, message: action == .restore ? "\(name) left full screen." : "\(action.displayName): \(name).")
+      }
+      if action == .restore { return snap(action, window) }
+    }
+
+    if action == .fullScreen {
+      guard let screen = screenFrame(containing: current) else {
+        return Outcome(ok: false, message: "Could not find the display \(name) is on.")
+      }
+      FullScreen.shared.enter(window.windowID)
+      history.willSnap(window.windowID, from: current)
+      let result = apply(screen, to: window, visible: screen, gap: 0, align: false)
+      history.didSnap(window.windowID, to: result ?? screen)
+      pruneHistory()
+      StackManager.shared.didSnap(window, action: action, frame: result ?? screen)
+      return Outcome(ok: true, message: "Full Screen: \(name).")
+    }
+
     if action == .restore {
       guard let restore = history.takeRestore(window.windowID) else {
         // Restore still lets go of the window.
@@ -117,6 +141,12 @@ enum WindowSnapper {
     history.didSnap(window.windowID, to: result ?? target)
     pruneHistory()
     return result
+  }
+
+  /// Puts a window at `frame` exactly, without the alignment a snap does.
+  static func setFrame(_ frame: CGRect, of window: WindowMover.Target) {
+    setTimeout(on: window)
+    apply(frame, to: window, visible: frame, gap: 0, align: false)
   }
 
   /// Why Cubicle won't touch this window, if it won't.
@@ -204,6 +234,16 @@ enum WindowSnapper {
     let fallback = NSScreen.main.flatMap { screens.firstIndex(of: $0) } ?? 0
     guard let index = SnapGeometry.screenIndex(for: rect, screens: frames, fallback: fallback) else { return nil }
     return SnapGeometry.flipped(screens[index].visibleFrame, primaryHeight: height)
+  }
+
+  /// The whole display holding most of `rect`, menu bar and Dock included, in top-left-origin coordinates.
+  static func screenFrame(containing rect: CGRect) -> CGRect? {
+    let screens = NSScreen.screens
+    guard let primary = screens.first else { return nil }
+    let frames = screens.map { SnapGeometry.flipped($0.frame, primaryHeight: primary.frame.height) }
+    let fallback = NSScreen.main.flatMap { screens.firstIndex(of: $0) } ?? 0
+    guard let index = SnapGeometry.screenIndex(for: rect, screens: frames, fallback: fallback) else { return nil }
+    return frames[index]
   }
 
   // MARK: - Finding the window

@@ -116,7 +116,8 @@ struct HotkeyCombination: Codable, Equatable {
     keyEquivalent: " "
   )
 
-  /// Rectangle's default keys: ⌃⌥ plus arrows for halves, U I J K for quarters, Return, C and Delete.
+  /// Rectangle's default keys: ⌃⌥ plus arrows for halves, U I J K for quarters, Return, C and Delete. F is
+  /// Cubicle's own, for Full Screen.
   static func defaultSnap(_ action: SnapAction) -> HotkeyCombination {
     let keyCode: Int
     let displayKey: String
@@ -131,6 +132,7 @@ struct HotkeyCombination: Codable, Equatable {
     case .bottomLeft: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_J, "J", "j")
     case .bottomRight: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_K, "K", "k")
     case .maximize: (keyCode, displayKey, keyEquivalent) = (kVK_Return, "↩", "\r")
+    case .fullScreen: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_F, "F", "f")
     case .center: (keyCode, displayKey, keyEquivalent) = (kVK_ANSI_C, "C", "c")
     case .restore:
       (keyCode, displayKey, keyEquivalent) = (kVK_Delete, "⌫", String(Character(UnicodeScalar(NSBackspaceCharacter)!)))
@@ -449,7 +451,7 @@ enum HotkeyIdentifier: String, CaseIterable {
   case sendWindow
   case snapLeftHalf, snapRightHalf, snapTopHalf, snapBottomHalf
   case snapTopLeft, snapTopRight, snapBottomLeft, snapBottomRight
-  case snapMaximize, snapCenter, snapRestore
+  case snapMaximize, snapFullScreen, snapCenter, snapRestore
   case cycleNext, cyclePrevious
   case swapLeft, swapRight, swapUp, swapDown
   case togglePause
@@ -489,6 +491,7 @@ enum HotkeyIdentifier: String, CaseIterable {
     case .snapBottomLeft: return .bottomLeft
     case .snapBottomRight: return .bottomRight
     case .snapMaximize: return .maximize
+    case .snapFullScreen: return .fullScreen
     case .snapCenter: return .center
     case .snapRestore: return .restore
     default: return nil

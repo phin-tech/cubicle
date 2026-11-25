@@ -34,7 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     SpaceCatalog.shared.startObserving()
     WindowClickMenu.shared.setEnabled(WindowClickMenu.isEnabledSetting)
     AppHistory.shared.start()
+    FullScreen.shared.start()
     VirtualWorkspaces.shared.start()
+    FullScreen.shared.didStartWorkspaces()
     SwipeSwitcher.shared.setEnabled(SwipeSwitcher.isEnabledSetting)
     StackManager.shared.start()
     startCommandServer()
@@ -60,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationWillTerminate(_ notification: Notification) {
     commandServer?.stop()
     VirtualWorkspaces.shared.stop()
+    FullScreen.shared.stop()
     stopObservingAppActivation()
   }
 

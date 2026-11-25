@@ -124,6 +124,21 @@ final class SnapGeometryTests: XCTestCase {
     XCTAssertNil(SnapAction(name: "thirds"))
     XCTAssertEqual(Set(SnapAction.allCases.map(\.displayName)).count, SnapAction.allCases.count)
   }
+
+  func testFullScreenIsNotMaximize() {
+    XCTAssertEqual(SnapAction(name: "full-screen"), .fullScreen)
+    XCTAssertEqual(SnapAction(name: "fullscreen"), .fullScreen)
+    XCTAssertEqual(SnapAction(name: "full"), .maximize)
+    XCTAssertEqual(SnapAction.matching("full screen").first, .fullScreen)
+  }
+
+  func testFullScreenLetsGoOfTheWindowsZone() {
+    // It covers the whole display, not the usable area a zone is a fraction of.
+    XCTAssertNil(SnapAction.fullScreen.zone)
+    XCTAssertNil(SnapAction.fullScreen.region)
+    XCTAssertEqual(Zone(name: "full"), .full)
+    XCTAssertNil(Zone(name: "full-screen"))
+  }
 }
 
 final class SnapHistoryTests: XCTestCase {

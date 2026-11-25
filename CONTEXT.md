@@ -26,7 +26,11 @@ _Avoid_: tile, arrange
 
 **Maximize**:
 The snap that fills the display's usable area (the screen minus the menu bar and Dock). The window stays on its current **Workspace**.
-_Avoid_: full screen (that is macOS's native full screen, which gives the window its own macOS Space; Cubicle does not do this)
+_Avoid_: full screen (that is **Full Screen**)
+
+**Full Screen**:
+The snap that makes a window cover its whole display, menu bar and Dock included. The window stays on its **Workspace**, and the menu bar and Dock auto-hide while any full-screen window is on a workspace that is showing. Doing it again, snapping the window anywhere else, or moving it by hand ends it. It has no **Zone**. It is not macOS's native full screen, which gives the window a macOS Space of its own; Cubicle never enters that.
+_Avoid_: native full screen, zen mode
 
 **Center**:
 The snap that keeps a window's size and moves it to the middle of its display. It has no **Zone**.
@@ -38,7 +42,7 @@ The snap that puts a window back to the frame it had before Cubicle first snappe
 One user setting, in pixels, kept between snapped windows and between a window and the display edge. Shared by snaps and **Zones**.
 
 **Zone**:
-A named rectangle that windows can be placed in, defined as a fraction of the display's usable area (so it follows the display if it changes size). Every workspace has the same fixed set of zones (the halves, the quarters, and "full", which is the **Maximize** rectangle), and they cover exactly the same rectangles as the matching **Snap** commands. Center and Restore have no zone. Zones overlap. A zone is "occupied" on a workspace when windows are in it there.
+A named rectangle that windows can be placed in, defined as a fraction of the display's usable area (so it follows the display if it changes size). Every workspace has the same fixed set of zones (the halves, the quarters, and "full", which is the **Maximize** rectangle), and they cover exactly the same rectangles as the matching **Snap** commands. Full Screen, Center and Restore have no zone. Zones overlap. A zone is "occupied" on a workspace when windows are in it there.
 _Avoid_: slot, region, tile
 
 **Layout**:
@@ -72,5 +76,5 @@ A workspace whose **Layout** is kept but ignored: nothing is placed automaticall
 
 ## Flagged ambiguities
 
-- "Full screen" was used to mean **Maximize**. Resolved: Cubicle never enters native full screen.
+- "Full screen" was used to mean **Maximize**. Resolved: Maximize fills the usable area; **Full Screen** covers the whole display and hides the menu bar and Dock. Cubicle never enters native full screen.
 - "Space" meant a macOS Space until Cubicle replaced them with **Workspaces**. Resolved: say workspace; the code's `Space*` type names still mean workspaces.
