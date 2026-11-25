@@ -8,6 +8,8 @@ final class GeneralSettingsViewController: NSViewController {
     checkboxWithTitle: "Show on-screen display when switching workspaces", target: nil, action: nil)
   private let osdDurationPopup = NSPopUpButton()
   private let osdDurationLabel = NSTextField(labelWithString: "Duration:")
+  private let swipeCheckbox = NSButton(
+    checkboxWithTitle: "Swipe between workspaces with three or four fingers", target: nil, action: nil)
   private let launchAtLoginCheckbox = NSButton(
     checkboxWithTitle: "Launch at login", target: nil, action: nil)
   private let hideMenuBarIconCheckbox = NSButton(
@@ -61,6 +63,8 @@ final class GeneralSettingsViewController: NSViewController {
     hideMenuBarIconCheckbox.action = #selector(hideMenuBarIconChanged)
     showNameInMenuBarCheckbox.target = self
     showNameInMenuBarCheckbox.action = #selector(showNameInMenuBarChanged)
+    swipeCheckbox.target = self
+    swipeCheckbox.action = #selector(swipeChanged)
 
     // Populate data
     for duration in durationPresets { osdDurationPopup.addItem(withTitle: "\(duration)ms") }
@@ -70,6 +74,7 @@ final class GeneralSettingsViewController: NSViewController {
     formView.addRow(label: systemLabel, control: launchAtLoginCheckbox)
     formView.addRow(label: nil, control: hideMenuBarIconCheckbox)
     formView.addRow(label: nil, control: showNameInMenuBarCheckbox)
+    formView.addRow(label: nil, control: swipeCheckbox)
     formView.addSectionSpacing()
 
     formView.addRow(label: NSTextField(labelWithString: "Window Moves:"), control: NSTextField(
@@ -140,6 +145,7 @@ final class GeneralSettingsViewController: NSViewController {
 
     hideMenuBarIconCheckbox.state = defaults.bool(forKey: "hideMenuBarIcon") ? .on : .off
     showNameInMenuBarCheckbox.state = MenuBarLabel.isEnabled ? .on : .off
+    swipeCheckbox.state = SwipeSwitcher.isEnabledSetting ? .on : .off
     if UpdateChecker.isAvailable {
       autoUpdateCheckbox.state = UpdateChecker.shared.automaticChecks ? .on : .off
       betaUpdatesCheckbox.state = UpdateChecker.shared.betaUpdates ? .on : .off
@@ -226,6 +232,10 @@ final class GeneralSettingsViewController: NSViewController {
     } catch {
       setCLIStatus(error.localizedDescription, isError: true)
     }
+  }
+
+  @objc private func swipeChanged(_ sender: NSButton) {
+    SwipeSwitcher.isEnabledSetting = sender.state == .on
   }
 
   @objc private func showNameInMenuBarChanged(_ sender: NSButton) {

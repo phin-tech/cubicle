@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     WindowClickMenu.shared.setEnabled(WindowClickMenu.isEnabledSetting)
     AppHistory.shared.start()
     VirtualWorkspaces.shared.start()
+    SwipeSwitcher.shared.setEnabled(SwipeSwitcher.isEnabledSetting)
     StackManager.shared.start()
     startCommandServer()
     UpdateChecker.shared.start()

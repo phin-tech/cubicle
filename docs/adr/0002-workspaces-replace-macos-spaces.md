@@ -7,7 +7,7 @@ On macOS 27 with SIP on, Spaces fight a window manager at every step. The privat
 The trade-offs:
 - Mission Control shows parked windows at the edge of the screen.
 - Native full screen still makes a Space of its own.
-- Trackpad swipes no longer switch workspaces.
+- Trackpad swipes need an event tap of Cubicle's own to switch workspaces, which swallows the Dock's swipe.
 - Some apps move their parked windows back on screen. Cubicle parks them again.
 - A crash can leave windows parked, so Cubicle saves where each one belongs and puts it back at the next launch.
 - Extra macOS Spaces have to be removed by hand, because Cubicle can't see the windows on them.
