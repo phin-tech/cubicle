@@ -103,6 +103,9 @@ final class VirtualWorkspaces {
     if let observer = activationObserver { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
     let parked = members.filter { $0.value.parkedFrame != nil }.map(\.key)
     move(park: [], unpark: parked)
+    // Anything still in a parking corner (an unpark that failed, or a window stranded before this launch) comes
+    // back too, so quitting always shows every window.
+    rescueStranded(currentWindows().map(\.id))
     // Keep the assignments, but record that nothing is parked any more.
     save()
   }
@@ -510,6 +513,11 @@ final class VirtualWorkspaces {
         setSize(job.element, target.size)
         setPosition(job.element, target.origin)
       }
+      // An app that ignored the move (busy, or Accessibility timed out) stays parked, to be tried again. Apps
+      // clamp a little (below the menu bar), so only a window far from where it should be counts.
+      if let now = frame(of: job.element), abs(now.minX - target.minX) > 60 || abs(now.minY - target.minY) > 60 {
+        return .skipped
+      }
       return .unparked
     case .park(let bounds, let others, let saved):
       guard !bool(job.element, kAXMinimizedAttribute), !bool(job.element, "AXFullScreen"),
@@ -531,6 +539,43 @@ final class VirtualWorkspaces {
       let rect = CGRect(origin: point, size: size).insetBy(dx: 2, dy: 2)
       return !others.contains { $0.intersects(rect) }
     } ?? candidates[0]
+  }
+
+  /// Moves any of these windows that sits (almost) entirely off screen, as a parked window does, back inside the
+  /// usable area of its display, keeping its size.
+  private func rescueStranded(_ ids: [UInt32]) {
+    let screens = Self.screens()
+    let bounds = screens.map(\.bounds)
+    let byID = Dictionary(currentWindows().map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    for id in ids {
+      guard let window = byID[id], let frame = WindowMover.frame(of: window.element),
+        Self.looksParked(frame, screens: bounds)
+      else { continue }
+      let display = members[id].flatMap { member in screens.first { $0.uuid == member.display } }
+        ?? screens.first { $0.bounds.intersects(frame) } ?? screens.first
+      guard let display else { continue }
+      let usable = WindowSnapper.visibleFrame(containing: display.bounds) ?? display.bounds
+      Self.setPosition(window.element, Self.rescued(frame, into: usable).origin)
+      members[id]?.parkedFrame = nil
+      NSLog("Cubicle: brought back a window left off screen (%u)", id)
+    }
+  }
+
+  /// Whether `frame` shows less than a sliver on every display, as a parked window does.
+  nonisolated static func looksParked(_ frame: CGRect, screens: [CGRect]) -> Bool {
+    !screens.contains { screen in
+      let overlap = screen.intersection(frame)
+      return !overlap.isNull && overlap.width >= 40 && overlap.height >= 40
+    }
+  }
+
+  /// `frame` moved the least distance to sit inside `usable`, or at its top-left if it's bigger.
+  nonisolated static func rescued(_ frame: CGRect, into usable: CGRect) -> CGRect {
+    func clamp(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat { max(low, min(value, high)) }
+    return CGRect(
+      x: clamp(frame.minX, usable.minX, max(usable.minX, usable.maxX - frame.width)),
+      y: clamp(frame.minY, usable.minY, max(usable.minY, usable.maxY - frame.height)),
+      width: frame.width, height: frame.height)
   }
 
   func isParked(_ id: UInt32) -> Bool {
@@ -581,6 +626,12 @@ final class VirtualWorkspaces {
     }
     members = members.filter { seen.contains($0.key) }
     move(park: strayed, unpark: [])
+    // Showing windows that are still off screen: an unpark that didn't take is tried again, and a window left in a
+    // parking corner when Cubicle last stopped without unparking (a crash, or a kill) is brought back on screen.
+    let showing = members.filter { $0.value.workspace == activeIndex($0.value.display) }
+    let retry = showing.filter { $0.value.parkedFrame != nil }.map(\.key)
+    if !retry.isEmpty { move(park: [], unpark: retry) }
+    rescueStranded(showing.filter { $0.value.parkedFrame == nil }.map(\.key))
     if gathering { gather(adopted, screens: screens) }
     // A display that went away: its windows join the main display's workspaces.
     if let main = screens.first {
