@@ -101,6 +101,13 @@ enum StashNoteColor: String, CaseIterable {
       brightness: max(c.brightnessComponent, 0.93), alpha: 1)
   }
 
+  /// A note colour for dark mode: the same hue, deep and muted, for light text.
+  static func darkShade(_ color: NSColor) -> NSColor {
+    let c = color.usingColorSpace(.deviceRGB) ?? color
+    let saturation = c.saturationComponent < 0.08 ? c.saturationComponent : min(max(c.saturationComponent, 0.4), 0.6)
+    return NSColor(hue: c.hueComponent, saturation: saturation, brightness: 0.34, alpha: 1)
+  }
+
   /// Black or white, whichever reads better on `color`.
   static func text(on color: NSColor) -> NSColor {
     let c = color.usingColorSpace(.sRGB) ?? color

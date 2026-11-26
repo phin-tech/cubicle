@@ -24,6 +24,23 @@ enum StashTabLook: String, CaseIterable {
   }
 }
 
+/// Whether Tabs (and notes, and previews) are drawn light, dark, or as the system is.
+enum StashAppearance: String, CaseIterable {
+  case system
+  case light
+  case dark
+
+  static let defaultsKey = "stashAppearance"
+
+  var displayName: String {
+    switch self {
+    case .system: return "Match the System"
+    case .light: return "Light"
+    case .dark: return "Dark"
+    }
+  }
+}
+
 /// What brings a stashed window out of its Tab.
 enum StashOpen: String, CaseIterable {
   case hover

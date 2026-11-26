@@ -12,6 +12,7 @@ final class StashSettingsViewController: NSViewController {
   private let stack = FlippedStackView()
   private let lookPopUp = NSPopUpButton()
   private let fontPopUp = NSPopUpButton()
+  private let appearancePopUp = NSPopUpButton()
   private let openPopUp = NSPopUpButton()
   private let hidePopUp = NSPopUpButton()
   private let minimizePopUp = NSPopUpButton()
@@ -22,7 +23,7 @@ final class StashSettingsViewController: NSViewController {
   private var cancellables = Set<AnyCancellable>()
 
   override func loadView() {
-    view = NSView(frame: NSRect(x: 0, y: 0, width: 550, height: 530))
+    view = NSView(frame: NSRect(x: 0, y: 0, width: 550, height: 560))
     let description = NSTextField(wrappingLabelWithString:
       "Stash a window against the left, right or top edge. It tucks away behind a Tab there, on every workspace, and "
       + "comes out when you point at or click the Tab. Drag a Tab to move it, drag it away to unstash, and right-click "
@@ -33,6 +34,9 @@ final class StashSettingsViewController: NSViewController {
     lookPopUp.target = self
     lookPopUp.action = #selector(lookChanged(_:))
     fillFonts()
+    for appearance in StashAppearance.allCases { appearancePopUp.addItem(withTitle: appearance.displayName) }
+    appearancePopUp.target = self
+    appearancePopUp.action = #selector(appearanceChanged(_:))
     fontPopUp.target = self
     fontPopUp.action = #selector(fontChanged(_:))
     for open in StashOpen.allCases { openPopUp.addItem(withTitle: open.displayName) }
@@ -62,12 +66,13 @@ final class StashSettingsViewController: NSViewController {
 
     let lookRow = row([NSTextField(labelWithString: "Tabs:"), lookPopUp])
     let fontRow = row([NSTextField(labelWithString: "Font:"), fontPopUp])
+    let appearanceRow = row([NSTextField(labelWithString: "Appearance:"), appearancePopUp])
     let openRow = row([NSTextField(labelWithString: "Open a window by:"), openPopUp])
     let hideRow = row([NSTextField(labelWithString: "Hide it again when:"), hidePopUp])
     let minimizeRow = row([NSTextField(labelWithString: "The minimize button:"), minimizePopUp])
     let dragRow = row([NSTextField(labelWithString: "Dragging a window:"), dragCheckbox])
     let shortcutsRow = row([NSTextField(labelWithString: "Shortcuts:"), shortcuts])
-    for subview in [description, lookRow, fontRow, openRow, hideRow, minimizeRow, dragRow, shortcutsRow, scroll] as [NSView] {
+    for subview in [description, lookRow, fontRow, appearanceRow, openRow, hideRow, minimizeRow, dragRow, shortcutsRow, scroll] as [NSView] {
       subview.translatesAutoresizingMaskIntoConstraints = false
       view.addSubview(subview)
     }
@@ -79,7 +84,9 @@ final class StashSettingsViewController: NSViewController {
       lookRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
       fontRow.topAnchor.constraint(equalTo: lookRow.bottomAnchor, constant: 8),
       fontRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-      openRow.topAnchor.constraint(equalTo: fontRow.bottomAnchor, constant: 8),
+      appearanceRow.topAnchor.constraint(equalTo: fontRow.bottomAnchor, constant: 8),
+      appearanceRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      openRow.topAnchor.constraint(equalTo: appearanceRow.bottomAnchor, constant: 8),
       openRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
       hideRow.topAnchor.constraint(equalTo: openRow.bottomAnchor, constant: 8),
       hideRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
@@ -142,6 +149,7 @@ final class StashSettingsViewController: NSViewController {
     } else {
       fontPopUp.selectItem(at: 0)
     }
+    appearancePopUp.selectItem(at: StashAppearance.allCases.firstIndex(of: StashAppearance.current) ?? 0)
     openPopUp.selectItem(at: StashOpen.allCases.firstIndex(of: Stash.shared.openOn) ?? 0)
     hidePopUp.selectItem(at: StashHide.allCases.firstIndex(of: Stash.shared.hideWhen) ?? 0)
     minimizePopUp.selectItem(at: MinimizeCatcher.edge.flatMap { StashEdge.allCases.firstIndex(of: $0) }.map { $0 + 1 } ?? 0)
@@ -291,6 +299,12 @@ final class StashSettingsViewController: NSViewController {
       menu.addItem(item)
     }
     fontPopUp.menu = menu
+  }
+
+  @objc private func appearanceChanged(_ sender: NSPopUpButton) {
+    guard StashAppearance.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
+    UserDefaults.standard.set(
+      StashAppearance.allCases[sender.indexOfSelectedItem].rawValue, forKey: StashAppearance.defaultsKey)
   }
 
   @objc private func fontChanged(_ sender: NSPopUpButton) {

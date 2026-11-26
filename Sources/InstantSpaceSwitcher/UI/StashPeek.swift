@@ -50,6 +50,7 @@ final class StashPeekPanel: NSPanel {
 
   /// `frame` is in Cocoa's bottom-left-origin coordinates.
   func show(_ view: StashPeekView, frame: CGRect) {
+    appearance = StashAppearance.current.nsAppearance
     host.rootView = view
     setFrame(frame, display: true)
     if !isVisible { orderFrontRegardless() }

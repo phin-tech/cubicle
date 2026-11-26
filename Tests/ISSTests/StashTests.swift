@@ -206,6 +206,18 @@ final class StashLayoutTests: XCTestCase {
     }
   }
 
+  func testDarkNotesAreDeepAndReadable() {
+    for colour in StashNoteColor.allCases {
+      let dark = StashNoteColor.darkShade(colour.color)
+      XCTAssertEqual(StashNoteColor.text(on: dark), .white, "\(colour) wants light text in dark mode")
+      if colour != .gray {
+        XCTAssertEqual(
+          dark.usingColorSpace(.deviceRGB)!.hueComponent, colour.color.usingColorSpace(.deviceRGB)!.hueComponent,
+          accuracy: 0.01)
+      }
+    }
+  }
+
   func testIconColourFindsTheMainHue() {
     let red = NSImage(size: NSSize(width: 32, height: 32), flipped: false) { rect in
       NSColor.white.setFill()

@@ -840,7 +840,7 @@ final class Stash {
 
   private var lastLook: String?
   private func lookMayHaveChanged() {
-    let now = "\(look.rawValue)|\(StashTabFont.chosen)"
+    let now = "\(look.rawValue)|\(StashTabFont.chosen)|\(StashAppearance.current.rawValue)"
     guard now != lastLook else { return }
     lastLook = now
     refresh()

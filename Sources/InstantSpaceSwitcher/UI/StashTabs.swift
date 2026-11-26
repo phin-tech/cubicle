@@ -27,9 +27,25 @@ final class StashPanel: NSPanel {
 
   /// `frame` is in Cocoa's bottom-left-origin coordinates.
   func show(_ view: StashTabsView, frame: CGRect) {
+    appearance = StashAppearance.current.nsAppearance
     host.rootView = view
     setFrame(frame, display: true)
     if !isVisible { orderFrontRegardless() }
+  }
+}
+
+extension StashAppearance {
+  static var current: StashAppearance {
+    StashAppearance(rawValue: UserDefaults.standard.string(forKey: defaultsKey) ?? "") ?? .system
+  }
+
+  /// The appearance a panel takes; nil follows the system.
+  var nsAppearance: NSAppearance? {
+    switch self {
+    case .system: return nil
+    case .light: return NSAppearance(named: .aqua)
+    case .dark: return NSAppearance(named: .darkAqua)
+    }
   }
 }
 
@@ -226,9 +242,14 @@ private struct StashNote: View {
   let thickness: CGFloat
   var torn = false
   var font = Font.system(size: 12, weight: .semibold, design: .rounded)
+  @Environment(\.colorScheme) private var scheme
+
+  /// The note's colour: its post-it shade, or a deep one of the same hue in dark mode.
+  private var paperColor: NSColor { scheme == .dark ? StashNoteColor.darkShade(item.color) : item.color }
 
   var body: some View {
-    let text = Color(nsColor: StashNoteColor.text(on: item.color))
+    let color = paperColor
+    let text = Color(nsColor: StashNoteColor.text(on: color))
     let paper = TornPaperShape(seed: item.id, depth: torn ? 3.5 : 0)
     let label = HStack(spacing: 4) {
       Text(item.appName)
@@ -247,11 +268,11 @@ private struct StashNote: View {
     .background(
       ZStack {
         LinearGradient(
-          colors: [Color(nsColor: item.color), Color(nsColor: item.color.blended(withFraction: 0.08, of: .black) ?? item.color)],
+          colors: [Color(nsColor: color), Color(nsColor: color.blended(withFraction: 0.08, of: .black) ?? color)],
           startPoint: .top, endPoint: .bottom)
         if torn {
           // The fibres along the tear: paler paper, just inside the ragged edge.
-          TornPaperShape(seed: item.id, depth: 3.5, tearOnly: true).stroke(Color.white.opacity(0.55), lineWidth: 2.5)
+          TornPaperShape(seed: item.id, depth: 3.5, tearOnly: true).stroke(Color.white.opacity(scheme == .dark ? 0.2 : 0.55), lineWidth: 2.5)
         }
       }
       .clipShape(paper))
