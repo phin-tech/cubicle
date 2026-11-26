@@ -18,6 +18,7 @@ final class GeneralSettingsViewController: NSViewController {
     checkboxWithTitle: "Show the workspace's name in the menu bar", target: nil, action: nil)
 
   private let cliButton = NSButton(title: "Install 'cubicle' command", target: nil, action: nil)
+  private let alfredButton = NSButton(title: "Add the Workflow to Alfred", target: nil, action: nil)
   private let cliStatusLabel = NSTextField(labelWithString: "")
   private let cliExecutable = CLIInstaller.bundledExecutable()
   private let autoUpdateCheckbox = NSButton(
@@ -114,6 +115,24 @@ final class GeneralSettingsViewController: NSViewController {
     cliStatusLabel.textColor = .secondaryLabelColor
     formView.addRow(label: NSTextField(labelWithString: "Command Line:"), control: cliButton)
     formView.addRow(label: nil, control: cliStatusLabel)
+    formView.addSectionSpacing()
+
+    // Alfred: the workflow is bundled in the app; opening it has Alfred offer to import it (or update it).
+    let alfredWorkflow = Bundle.main.url(forResource: "Cubicle", withExtension: "alfredworkflow")
+    let alfredInstalled = NSWorkspace.shared.urlForApplication(withBundleIdentifier: OnboardingModel.alfredBundleID) != nil
+    alfredButton.target = self
+    alfredButton.action = #selector(alfredButtonClicked)
+    alfredButton.isEnabled = alfredWorkflow != nil && alfredInstalled
+    let alfredStatus = NSTextField(wrappingLabelWithString:
+      alfredWorkflow == nil ? "Only available when running from Cubicle.app."
+        : !alfredInstalled ? "Alfred isn't installed."
+        : "Type cb in Alfred for Cubicle's menu, and @ and a name to jump to a workspace. Needs the Powerpack. "
+          + "Add it again after an update to get the newest workflow.")
+    alfredStatus.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+    alfredStatus.textColor = .secondaryLabelColor
+    alfredStatus.preferredMaxLayoutWidth = 340
+    formView.addRow(label: NSTextField(labelWithString: "Alfred:"), control: alfredButton)
+    formView.addRow(label: nil, control: alfredStatus)
     formView.addSectionSpacing()
 
     // OSD
@@ -217,6 +236,11 @@ final class GeneralSettingsViewController: NSViewController {
   private func setCLIStatus(_ text: String, isError: Bool) {
     cliStatusLabel.stringValue = text
     cliStatusLabel.textColor = isError ? .systemRed : .secondaryLabelColor
+  }
+
+  @objc private func alfredButtonClicked(_ sender: NSButton) {
+    guard let url = Bundle.main.url(forResource: "Cubicle", withExtension: "alfredworkflow") else { return }
+    NSWorkspace.shared.open(url)
   }
 
   @objc private func cliButtonClicked(_ sender: NSButton) {

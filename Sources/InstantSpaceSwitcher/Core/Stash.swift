@@ -30,6 +30,8 @@ final class Stash {
     var home: CGRect
     /// Its size when it pops out, kept as you resize it.
     var size: CGSize
+    /// A name you gave its Tab, shown instead of the app's name or the window's title.
+    var name: String?
   }
 
   private var entries: [Entry] = []
@@ -279,7 +281,8 @@ final class Stash {
   var stashed: [Stashed] {
     entries.map { entry in
       let app = NSRunningApplication(processIdentifier: entry.pid)
-      let title = target(entry.id).map { $0.title.isEmpty ? $0.appName : $0.title } ?? app?.localizedName ?? "Window"
+      let title = entry.name
+        ?? target(entry.id).map { $0.title.isEmpty ? $0.appName : $0.title } ?? app?.localizedName ?? "Window"
       return Stashed(id: entry.id, app: app, title: title, edge: entry.edge, slot: StashSlot(position: entry.along))
     }
   }
@@ -308,6 +311,33 @@ final class Stash {
     popOut(next)
     pinned = true
     return .init(ok: true, message: target(next)?.displayName ?? "Stashed window")
+  }
+
+  /// Names a stashed window's Tab; an empty name goes back to the app's name and the window's title.
+  func rename(_ id: UInt32, to name: String?) {
+    guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+    let name = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+    entries[index].name = name?.isEmpty == false ? name : nil
+    save()
+    refresh()
+  }
+
+  /// Asks for a new name for a window's Tab.
+  func askToRename(_ id: UInt32) {
+    guard let entry = entry(id) else { return }
+    let app = NSRunningApplication(processIdentifier: entry.pid)
+    let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+    field.stringValue = entry.name ?? ""
+    field.placeholderString = app?.localizedName ?? "Window"
+    let alert = NSAlert()
+    alert.messageText = "Rename Tab"
+    alert.informativeText = "Leave it empty to use the app's name again."
+    alert.accessoryView = field
+    alert.addButton(withTitle: "Rename")
+    alert.addButton(withTitle: "Cancel")
+    alert.window.initialFirstResponder = field
+    NSApp.activate(ignoringOtherApps: true)
+    if alert.runModal() == .alertFirstButtonReturn { rename(id, to: field.stringValue) }
   }
 
   /// Tucks a stashed window away, if it's out.
@@ -602,6 +632,10 @@ final class Stash {
     let menu = NSMenu()
     menu.autoenablesItems = false
     menu.addItem(MenuAction.item("Unstash") { _ = Stash.shared.unstash(id) })
+    menu.addItem(MenuAction.item("Rename…") { Stash.shared.askToRename(id) })
+    if entry.name != nil {
+      menu.addItem(MenuAction.item("Use the App's Name") { Stash.shared.rename(id, to: nil) })
+    }
     menu.addItem(.separator())
     for slot in StashSlot.allCases {
       let item = MenuAction.item(slot.displayName(on: entry.edge)) { Stash.shared.move(id, to: slot) }
@@ -717,11 +751,12 @@ final class Stash {
   private func item(for entry: Entry, among group: [Entry]) -> StashTabsView.Item {
     let app = NSRunningApplication(processIdentifier: entry.pid)
     let appName = app?.localizedName ?? "Window"
-    let title = target(entry.id).map { $0.title.isEmpty ? $0.appName : $0.title } ?? appName
-    let sameApp = group.filter { $0.pid == entry.pid }
-    let number = sameApp.count > 1 ? (sameApp.firstIndex(of: entry) ?? 0) + 1 : nil
+    let title = entry.name ?? target(entry.id).map { $0.title.isEmpty ? $0.appName : $0.title } ?? appName
+    // A named Tab needs no number to tell it from its app's other windows.
+    let sameApp = group.filter { $0.pid == entry.pid && $0.name == nil }
+    let number = entry.name == nil && sameApp.count > 1 ? (sameApp.firstIndex(of: entry) ?? 0) + 1 : nil
     return .init(
-      id: entry.id, icon: app?.icon, title: title, appName: appName,
+      id: entry.id, icon: app?.icon, title: title, appName: entry.name ?? appName,
       color: look.isNote ? StashNoteColor.color(for: app) : .clear, number: number, isOut: out == entry.id,
       badge: DockBadges.badge(for: app, in: badges), wiggles: wiggles[entry.id] ?? 0)
   }
