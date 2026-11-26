@@ -255,9 +255,10 @@ private struct StashNote: View {
         }
       }
       .clipShape(paper))
-    .overlay(alignment: .bottom) {
-      // The note's out-edge, a line in the window's accent while it's popped out.
-      if item.isOut { Rectangle().fill(Color.accentColor).frame(height: 3).padding(.bottom, torn ? 4 : 0) }
+    .overlay(alignment: torn ? .top : .bottom) {
+      // A line in the accent colour while its window is popped out: along the note's out-edge, or for torn paper,
+      // whose out-edge is ragged, along the straight side against the screen's edge.
+      if item.isOut { Rectangle().fill(Color.accentColor).frame(height: 3) }
     }
     .rotationEffect(.degrees(item.isDragged ? 0 : lean), anchor: .bottom)
     .shadow(color: .black.opacity(item.isDragged ? 0.35 : 0.22), radius: item.isDragged ? 4 : 1.5, x: 0, y: 1)
