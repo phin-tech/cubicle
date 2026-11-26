@@ -266,8 +266,8 @@ enum WindowSnapper {
 
   /// Launchers that run Cubicle commands. When one of them (or Cubicle) is in front, "the focused window" means
   /// the window of the app that was in front before it.
-  private static let launcherBundleIDs: Set<String> = [
-    "com.runningwithcrayons.Alfred", "com.raycast.macos",
+  nonisolated static let launcherBundleIDs: Set<String> = [
+    "com.runningwithcrayons.Alfred", "com.raycast.macos", LazySusan.bundleID,
   ]
 
   static func resolve(_ selector: Selector) -> Result<WindowMover.Target, Failure> {
@@ -425,7 +425,7 @@ final class AppHistory {
       guard let app = NSRunningApplication(processIdentifier: candidate), !app.isTerminated,
         app.activationPolicy == .regular
       else { continue }
-      if ["com.runningwithcrayons.Alfred", "com.raycast.macos"].contains(app.bundleIdentifier ?? "") { continue }
+      if WindowSnapper.launcherBundleIDs.contains(app.bundleIdentifier ?? "") { continue }
       return app
     }
     return nil

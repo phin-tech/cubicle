@@ -19,6 +19,8 @@ final class GeneralSettingsViewController: NSViewController {
 
   private let cliButton = NSButton(title: "Install 'cubicle' command", target: nil, action: nil)
   private let alfredButton = NSButton(title: "Add the Workflow to Alfred", target: nil, action: nil)
+  private let lazySusanButton = NSButton(title: "Add Cubicle to Lazy Susan", target: nil, action: nil)
+  private let lazySusanStatus = NSTextField(wrappingLabelWithString: "")
   private let cliStatusLabel = NSTextField(labelWithString: "")
   private let cliExecutable = CLIInstaller.bundledExecutable()
   private let autoUpdateCheckbox = NSButton(
@@ -135,6 +137,21 @@ final class GeneralSettingsViewController: NSViewController {
     formView.addRow(label: nil, control: alfredStatus)
     formView.addSectionSpacing()
 
+    // Lazy Susan: only shown when it's installed. Adding again replaces the group, so it doubles as Update.
+    if LazySusanInstaller.isInstalled {
+      lazySusanButton.target = self
+      lazySusanButton.action = #selector(lazySusanButtonClicked)
+      lazySusanButton.isEnabled = cliExecutable != nil
+      lazySusanStatus.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+      lazySusanStatus.preferredMaxLayoutWidth = 340
+      setLazySusanStatus(cliExecutable == nil ? "Only available when running from Cubicle.app."
+        : "Adds a Cubicle group under C: go to or send to a workspace, windows, stashed windows, snaps, rename. "
+          + "Add it again after an update to get the newest group.", isError: false)
+      formView.addRow(label: NSTextField(labelWithString: "Lazy Susan:"), control: lazySusanButton)
+      formView.addRow(label: nil, control: lazySusanStatus)
+      formView.addSectionSpacing()
+    }
+
     // OSD
     let osdLabel = NSTextField(labelWithString: "On-Screen Display:")
     showOSDCheckbox.title = "Show for"
@@ -236,6 +253,19 @@ final class GeneralSettingsViewController: NSViewController {
   private func setCLIStatus(_ text: String, isError: Bool) {
     cliStatusLabel.stringValue = text
     cliStatusLabel.textColor = isError ? .systemRed : .secondaryLabelColor
+  }
+
+  private func setLazySusanStatus(_ text: String, isError: Bool) {
+    lazySusanStatus.stringValue = text
+    lazySusanStatus.textColor = isError ? .systemRed : .secondaryLabelColor
+  }
+
+  @objc private func lazySusanButtonClicked(_ sender: NSButton) {
+    do {
+      try LazySusanInstaller.install()
+    } catch {
+      setLazySusanStatus(error.localizedDescription, isError: true)
+    }
   }
 
   @objc private func alfredButtonClicked(_ sender: NSButton) {

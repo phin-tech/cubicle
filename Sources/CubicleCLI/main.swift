@@ -61,18 +61,22 @@ let usage = """
     grid                Open the workspace grid
     new-space           Add a workspace to the display under the cursor
     rename <name> [--number <n>]
-                        Name the workspace showing under the cursor (or workspace n); an empty name clears it
+                        Name the workspace showing under the cursor (or workspace n); an empty name clears it.
+                        Put -- before a name that starts with a dash.
     focus --window <id>|--app <name>
                         Go to a window, switching to its workspace
     new-workspace [name] [--window <id>|--app <name>|--previous]
                         Put a window (the focused one by default) on a new workspace and go there
     alfred [query]      The Alfred workflow's menu, as Script Filter JSON
+    leader <go|send|windows|stashed>
+                        Items for a Lazy Susan dynamic group, as JSON: switch to a workspace, send the window
+                        you were in to one, go to a window, or bring out a stashed window
     remove-space [name|number]
                         Remove a workspace on the display under the cursor (the current one if none is
                         given). Its windows join the workspace before it; later ones move down a number.
     pick-workspace      Click windows to put on a new workspace, then name it
     move-workspace      Move the workspace under the cursor, with its windows and name, to the next display
-    help                Show this help
+    help                Show this help (so does --help or -h after any command)
 
   Commands run inside the Cubicle app, which holds the Accessibility permission, so this tool
   needs none of its own. Cubicle is started in the background if it is not already running.
@@ -240,6 +244,24 @@ guard let command = arguments.first else {
 }
 let rest = Array(arguments.dropFirst())
 
+// `--help` or `-h` anywhere before a `--` asks for help, never names a workspace or Tab.
+if rest.prefix(while: { $0 != "--" }).contains(where: { $0 == "--help" || $0 == "-h" }) {
+  print(usage)
+  exit(0)
+}
+
+/// Splits off the words after a `--`, which are taken as they are (a name that starts with a dash).
+func splitAtDoubleDash(_ arguments: [String]) -> (options: [String], literal: [String]) {
+  guard let marker = arguments.firstIndex(of: "--") else { return (arguments, []) }
+  return (Array(arguments[..<marker]), Array(arguments[(marker + 1)...]))
+}
+
+/// This tool's own path with links resolved (inside Cubicle.app), for commands other programs run without our PATH.
+func cliPath() -> String {
+  let url = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
+  return url.resolvingSymlinksInPath().path
+}
+
 switch command {
 case "help", "-h", "--help":
   print(usage)
@@ -313,17 +335,45 @@ case "new-workspace":
 
 case "rename":
   // `rename <name>` names the workspace showing under the cursor; `rename <name> --number 3` names another.
-  var words = rest
+  let (options, literal) = splitAtDoubleDash(rest)
+  var words = options
   var number: String?
   if let flag = words.firstIndex(of: "--number") {
     guard words.indices.contains(flag + 1) else { fail("--number needs a workspace number.") }
     number = words[flag + 1]
     words.removeSubrange(flag...(flag + 1))
   }
-  report(send(CubicleRequest(command: "rename", argument: words.joined(separator: " "), query: number)), command)
+  if let unknown = words.first(where: { $0.hasPrefix("-") && $0 != "-" }) {
+    fail("Unknown option '\(unknown)'. Put -- before a name that starts with a dash.")
+  }
+  report(send(CubicleRequest(
+    command: "rename", argument: (words + literal).joined(separator: " "), query: number)), command)
 
 case "alfred":
   printAlfred(AlfredMenu.items(for: rest.joined(separator: " ")))
+
+case "leader":
+  // Lazy Susan reads stdout as JSON and shows the first line of stderr when this exits non-zero.
+  guard rest.count == 1, let list = rest.first, LazySusan.lists.contains(list) else {
+    fail("Usage: cubicle leader <\(LazySusan.lists.joined(separator: "|"))>")
+  }
+  let cli = cliPath()
+  let items: [LazySusan.Item]
+  switch list {
+  case "go", "send":
+    let response = send(CubicleRequest(command: "list", here: true))
+    guard response.ok, let spaces = response.spaces else { fail(response.message ?? "list failed") }
+    items = list == "go" ? LazySusan.goItems(spaces, cli: cli) : LazySusan.sendItems(spaces, cli: cli)
+  case "windows":
+    let response = send(CubicleRequest(command: "windows"))
+    guard response.ok, let windows = response.windows else { fail(response.message ?? "windows failed") }
+    items = LazySusan.windowItems(windows, cli: cli)
+  default:
+    let response = send(CubicleRequest(command: "stashed"))
+    guard response.ok, let stashed = response.stashed else { fail(response.message ?? "stashed failed") }
+    items = LazySusan.stashedItems(stashed, cli: cli)
+  }
+  print(LazySusan.json(items))
 
 case "move-workspace":
   let response = send(CubicleRequest(command: "move-workspace"))
@@ -404,9 +454,10 @@ case "open-stashed":
     previous: target.previous ? true : nil)), command)
 
 case "rename-tab":
-  let target = windowTarget(rest)
+  let (options, literal) = splitAtDoubleDash(rest)
+  let target = windowTarget(options)
   report(send(CubicleRequest(
-    command: "rename-tab", argument: target.rest.joined(separator: " "), app: target.app, window: target.window,
+    command: "rename-tab", argument: (target.rest + literal).joined(separator: " "), app: target.app, window: target.window,
     previous: target.previous ? true : nil)), command)
 
 case "windows":
