@@ -60,6 +60,14 @@ final class Stash {
   private var press: (id: UInt32, start: CGPoint)?
   private var dragging: UInt32?
   private let ghost = StashPanel()
+  /// Where a window being dragged against an edge would stash: a Tab shown there before you let go.
+  private let hint = StashPanel()
+  /// The badges on stashed apps' Dock icons, by app (see `DockBadges`).
+  private var badges: [String: String] = [:]
+  /// The window being previewed beside its Tab, and the last picture of each window (see `StashPeek`).
+  private var peeking: UInt32?
+  private let peek = StashPeekPanel()
+  private var pictures: [UInt32: CGImage] = [:]
 
   var look: StashTabLook {
     StashTabLook(rawValue: UserDefaults.standard.string(forKey: StashTabLook.defaultsKey) ?? "") ?? .icon
@@ -158,16 +166,21 @@ final class Stash {
     }
   }
 
-  /// Stashes a window against `edge`, its Tab in `slot` (the middle unless you say).
-  func stash(_ window: WindowMover.Target, to edge: StashEdge, slot: StashSlot? = nil) -> WindowSnapper.Outcome {
+  /// Stashes a window against `edge`, its Tab in `slot` (the middle unless you say) or at `position`. Dragged there,
+  /// `display` is the one it was dragged to and `home` where it was before the drag.
+  func stash(
+    _ window: WindowMover.Target, to edge: StashEdge, slot: StashSlot? = nil, position: CGFloat? = nil,
+    display: String? = nil, home: CGRect? = nil
+  ) -> WindowSnapper.Outcome {
+    let position = position ?? slot?.position
     let id = window.windowID
     let name = window.displayName
     if let index = entries.firstIndex(where: { $0.id == id }) {
       let current = entries[index].along
-      if entries[index].edge == edge && (slot == nil || slot!.position == current) { return unstash(id) }
+      if entries[index].edge == edge && (position == nil || position! == current) { return unstash(id) }
       if out == id { tuck(id, refocus: false) }
       entries[index].edge = edge
-      entries[index].position = slot?.position ?? current
+      entries[index].position = position ?? current
       entries[index].slot = nil
       save()
       refresh()
@@ -182,15 +195,18 @@ final class Stash {
     let frame = WindowMover.frame(of: window.window) ?? window.frame
     let screens = VirtualWorkspaces.screens()
     let center = CGPoint(x: frame.midX, y: frame.midY)
-    guard let screen = screens.first(where: { $0.bounds.contains(center) }) ?? screens.first else {
+    guard
+      let screen = screens.first(where: { $0.uuid == display }) ?? screens.first(where: { $0.bounds.contains(center) })
+        ?? screens.first
+    else {
       return .init(ok: false, message: "Could not find the display \(name) is on.")
     }
     // Out of its zone, as Center and Restore let go of a window; then off every workspace.
     StackManager.shared.didSnap(window, action: .center, frame: frame)
     VirtualWorkspaces.shared.release(id)
     entries.append(Entry(
-      id: id, pid: window.pid, edge: edge, slot: nil, position: slot?.position, display: screen.uuid, home: frame,
-      size: frame.size))
+      id: id, pid: window.pid, edge: edge, slot: nil, position: position, display: screen.uuid, home: home ?? frame,
+      size: (home ?? frame).size))
     elements[id] = window.window
     tuck(id, refocus: true)
     save()
@@ -271,6 +287,26 @@ final class Stash {
     move(id, display: entry.display, edge: edge, position: entry.along)
   }
 
+  /// Brings out the next stashed window, in the order their Tabs run, and keeps it out: the first if none is out,
+  /// else the one after the window that's out. After the last, it tucks that one away.
+  func showNext() -> WindowSnapper.Outcome {
+    let order = placed
+      .sorted { ($0.display, $0.edge.rawValue, $0.strip.minX + $0.strip.minY) < ($1.display, $1.edge.rawValue, $1.strip.minX + $1.strip.minY) }
+      .flatMap(\.entries).map(\.id)
+    guard let first = order.first else { return .init(ok: false, message: "No windows are stashed.") }
+    var next = first
+    if let id = out, let index = order.firstIndex(of: id) {
+      guard index + 1 < order.count else {
+        tuck(id, refocus: true)
+        return .init(ok: true, message: "Tucked away.")
+      }
+      next = order[index + 1]
+    }
+    popOut(next)
+    pinned = true
+    return .init(ok: true, message: target(next)?.displayName ?? "Stashed window")
+  }
+
   /// Tucks a stashed window away, if it's out.
   func tuckAway(_ id: UInt32) {
     if out == id { tuck(id, refocus: true) }
@@ -317,6 +353,7 @@ final class Stash {
 
   private func popOut(_ id: UInt32) {
     cancelTuck()
+    hidePeek()
     guard out != id else { return }
     if let current = out { tuck(current, refocus: false) }
     guard let entry = entries.first(where: { $0.id == id }), let window = target(id),
@@ -333,6 +370,13 @@ final class Stash {
     raisedByUs = (entry.pid, Date())
     raise(window)
     refresh()
+    // A fresh picture for its preview, once it's on screen.
+    if openOn == .peek {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+        guard self?.out == id else { return }
+        self?.takePicture(of: id)
+      }
+    }
   }
 
   /// Parks the window just off its display's bottom corner. `refocus` gives the keyboard back to the app that had
@@ -387,8 +431,10 @@ final class Stash {
     let mouse = Self.mouse()
     if let hit = tab(at: mouse) {
       if openOn == .hover && !pinned && hit != out { popOut(hit) } else { cancelTuck() }
+      if openOn == .peek && hit != out { showPeek(hit) } else { hidePeek() }
       return
     }
+    hidePeek()
     guard let id = out, !keepsOut else { return }
     if inOutZone(mouse, frame: outFrame) { cancelTuck() } else { scheduleTuck(id) }
   }
@@ -460,6 +506,7 @@ final class Stash {
       return true
     case .leftMouseDown:
       guard let id = tab(at: mouse) else { return false }
+      hidePeek()
       press = (id, mouse)
       return true
     case .leftMouseDragged:
@@ -484,7 +531,7 @@ final class Stash {
         }
         dropTarget = nil
         refresh()
-      } else if out == press.id && (pinned || openOn == .click) {
+      } else if out == press.id && (pinned || openOn.isClick) {
         tuck(press.id, refocus: true)
       } else {
         // On hover, a click keeps it out; on click, it opened by the click and hides as the setting says.
@@ -562,7 +609,7 @@ final class Stash {
     for edge in StashEdge.allCases where edge != entry.edge {
       menu.addItem(MenuAction.item("Move to \(edge.rawValue.capitalized) Edge") { Stash.shared.move(id, to: edge) })
     }
-    if look == .note, let app = NSRunningApplication(processIdentifier: entry.pid), let bundleID = app.bundleIdentifier {
+    if look.isNote, let app = NSRunningApplication(processIdentifier: entry.pid), let bundleID = app.bundleIdentifier {
       menu.addItem(.separator())
       let colours = NSMenuItem(title: "Note Colour", action: nil, keyEquivalent: "")
       let submenu = NSMenu()
@@ -672,7 +719,8 @@ final class Stash {
     let number = sameApp.count > 1 ? (sameApp.firstIndex(of: entry) ?? 0) + 1 : nil
     return .init(
       id: entry.id, icon: app?.icon, title: title, appName: appName,
-      color: look == .note ? StashNoteColor.color(for: app) : .clear, number: number, isOut: out == entry.id)
+      color: look.isNote ? StashNoteColor.color(for: app) : .clear, number: number, isOut: out == entry.id,
+      badge: DockBadges.badge(for: app, in: badges))
   }
 
   /// Puts up a panel for each place with Tabs, sized to them, and takes away the rest. Windows whose display has
@@ -701,14 +749,17 @@ final class Stash {
       panel.orderOut(nil)
       panels[key] = nil
     }
-    // Closing a stashed window doesn't always activate an app, so keep checking while there are any.
+    // Closing a stashed window doesn't always activate an app, and badges change, so keep checking while there are
+    // any.
     if entries.isEmpty {
       timer?.invalidate()
       timer = nil
+      hidePeek()
     } else if timer == nil {
       timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
-        MainActor.assumeIsolated { Stash.shared.prune() }
+        MainActor.assumeIsolated { Stash.shared.tick() }
       }
+      DispatchQueue.main.async { Stash.shared.tick() }
     }
   }
 
@@ -717,6 +768,15 @@ final class Stash {
     guard look != lastLook else { return }
     lastLook = look
     refresh()
+  }
+
+  private func tick() {
+    prune()
+    let now = entries.isEmpty ? [:] : DockBadges.current()
+    if now != badges {
+      badges = now
+      refresh()
+    }
   }
 
   /// Forgets windows that have closed.
@@ -729,11 +789,79 @@ final class Stash {
     guard !gone.isEmpty else { return }
     for entry in gone {
       if out == entry.id { endOut() }
+      if peeking == entry.id { hidePeek() }
       elements[entry.id] = nil
+      pictures[entry.id] = nil
     }
     entries.removeAll { entry in gone.contains(entry) }
     save()
     refresh()
+  }
+
+  // MARK: - Dragging a window to an edge
+
+  /// Shows where `window` would stash, let go now: a Tab against `edge` of `display`, at the mouse. Returns its place
+  /// along the edge, joining Tabs already there if it's over them.
+  func showDragHint(for window: WindowMover.Target, display: String, edge: StashEdge, at mouse: CGPoint) -> CGFloat? {
+    guard let layout = layout(display, edge), let primaryHeight = NSScreen.screens.first?.frame.height else { return nil }
+    let rect = layout.tab(following: mouse)
+    let onto = placed.first { $0.display == display && $0.edge == edge && $0.strip.intersects(rect) }
+    let position = onto?.position ?? layout.position(at: mouse)
+    let app = NSRunningApplication(processIdentifier: window.pid)
+    let item = StashTabsView.Item(
+      id: window.windowID, icon: app?.icon, title: window.title.isEmpty ? window.appName : window.title,
+      appName: app?.localizedName ?? window.appName,
+      color: look.isNote ? StashNoteColor.color(for: app) : .clear, number: nil, isOut: false, isDragged: true)
+    hint.ignoresMouseEvents = true
+    hint.alphaValue = 0.8
+    hint.show(
+      StashTabsView(items: [item], edge: edge, look: look, tabSize: layout.tabSize),
+      frame: SnapGeometry.flipped(rect, primaryHeight: primaryHeight))
+    return position
+  }
+
+  func hideDragHint() {
+    hint.orderOut(nil)
+  }
+
+  // MARK: - Previews
+
+  /// A preview of a tucked window beside its Tab, while you point at the Tab (when windows open on a click). It
+  /// shows the last picture taken of the window, then a fresh one.
+  private func showPeek(_ id: UInt32) {
+    guard peeking != id, let entry = entry(id), let (layout, tab) = place(of: id),
+      let primaryHeight = NSScreen.screens.first?.frame.height
+    else { return }
+    peeking = id
+    let app = NSRunningApplication(processIdentifier: entry.pid)
+    let title = target(id).map { $0.title.isEmpty ? $0.appName : $0.title } ?? app?.localizedName ?? "Window"
+    let size = StashPeekView.size(for: entry.size)
+    let frame = SnapGeometry.flipped(layout.popped(size, from: tab), primaryHeight: primaryHeight)
+    func show() {
+      peek.show(
+        StashPeekView(picture: pictures[id], icon: app?.icon, title: title, badge: DockBadges.badge(for: app, in: badges)),
+        frame: frame)
+    }
+    show()
+    takePicture(of: id) { [weak self] in
+      if self?.peeking == id { show() }
+    }
+  }
+
+  private func hidePeek() {
+    guard peeking != nil else { return }
+    peeking = nil
+    peek.orderOut(nil)
+  }
+
+  /// Takes a picture of a stashed window for its preview, if Cubicle may record the screen.
+  private func takePicture(of id: UInt32, then done: (() -> Void)? = nil) {
+    guard #available(macOS 14.0, *) else { return }
+    Task { @MainActor in
+      guard let picture = await StashPeek.picture(of: id) else { return }
+      self.pictures[id] = picture
+      done?()
+    }
   }
 
   // MARK: - Helpers
@@ -744,7 +872,7 @@ final class Stash {
   }
 
   /// The mouse, in top-left-origin coordinates as Accessibility uses.
-  private static func mouse() -> CGPoint {
+  static func mouse() -> CGPoint {
     let point = NSEvent.mouseLocation
     let height = NSScreen.screens.first?.frame.height ?? 0
     return CGPoint(x: point.x, y: height - point.y)

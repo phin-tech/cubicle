@@ -2,11 +2,15 @@ import CoreGraphics
 import CubicleIPC
 
 /// How a stash Tab looks: the app's icon alone, the icon and the window's title, or a sticky note in the app's
-/// colour with its name written along the edge.
+/// colour with its name written along the edge, either neat or torn off a pad.
 enum StashTabLook: String, CaseIterable {
   case icon
   case labelled
   case note
+  case torn
+
+  /// A note of either kind: coloured, with the app's name along it.
+  var isNote: Bool { self == .note || self == .torn }
 
   static let defaultsKey = "stashTabLook"
 
@@ -15,6 +19,7 @@ enum StashTabLook: String, CaseIterable {
     case .icon: return "Icon only"
     case .labelled: return "Icon and title"
     case .note: return "Sticky note"
+    case .torn: return "Torn paper"
     }
   }
 }
@@ -23,6 +28,8 @@ enum StashTabLook: String, CaseIterable {
 enum StashOpen: String, CaseIterable {
   case hover
   case click
+  /// Clicking, with a preview of the window while you point at its Tab.
+  case peek
 
   static let defaultsKey = "stashOpenOn"
 
@@ -30,8 +37,11 @@ enum StashOpen: String, CaseIterable {
     switch self {
     case .hover: return "Pointing at its Tab"
     case .click: return "Clicking its Tab"
+    case .peek: return "Clicking its Tab, with a preview"
     }
   }
+
+  var isClick: Bool { self != .hover }
 }
 
 /// What tucks a popped-out window away again (besides clicking its Tab).
@@ -65,7 +75,7 @@ struct StashLayout {
     switch look {
     case .icon: return edge.isVertical ? 32 : 30
     case .labelled: return edge.isVertical ? 168 : 30
-    case .note: return 30
+    case .note, .torn: return 30
     }
   }
   /// A Tab's length along the edge. A note's name runs along it.
@@ -73,7 +83,7 @@ struct StashLayout {
     switch look {
     case .icon: return edge.isVertical ? 38 : 40
     case .labelled: return edge.isVertical ? 38 : 168
-    case .note: return 104
+    case .note, .torn: return 104
     }
   }
 
@@ -131,6 +141,17 @@ struct StashLayout {
 
   /// How far from every edge a dragged Tab has to be to tear off, unstashing its window where it's let go.
   static let tearOff: CGFloat = 120
+
+  /// The edge a window being dragged is pushed against: the mouse at the very edge of a display, where there's no
+  /// other display to carry on into. `display` and `others` are full display frames.
+  static func pushedEdge(_ mouse: CGPoint, on display: CGRect, among others: [CGRect]) -> StashEdge? {
+    let reach: CGFloat = 2
+    func open(_ point: CGPoint) -> Bool { !others.contains { $0.contains(point) } }
+    if mouse.x <= display.minX + reach, open(CGPoint(x: display.minX - reach - 1, y: mouse.y)) { return .left }
+    if mouse.x >= display.maxX - reach - 1, open(CGPoint(x: display.maxX + reach, y: mouse.y)) { return .right }
+    if mouse.y <= display.minY + reach, open(CGPoint(x: mouse.x, y: display.minY - reach - 1)) { return .top }
+    return nil
+  }
 
   /// Whether a Tab dragged to `point` has come away from the edges: farther than `tearOff` from the left, right and
   /// top of `visible`.

@@ -131,6 +131,45 @@ final class StashLayoutTests: XCTestCase {
     XCTAssertTrue(visible.contains(low))
   }
 
+  func testAWindowPushedAgainstAnOpenEdgeStashes() {
+    let main = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    XCTAssertEqual(StashLayout.pushedEdge(CGPoint(x: 0, y: 400), on: main, among: []), .left)
+    XCTAssertEqual(StashLayout.pushedEdge(CGPoint(x: 1439, y: 400), on: main, among: []), .right)
+    XCTAssertEqual(StashLayout.pushedEdge(CGPoint(x: 700, y: 0), on: main, among: []), .top)
+    XCTAssertNil(StashLayout.pushedEdge(CGPoint(x: 700, y: 400), on: main, among: []))
+    XCTAssertNil(StashLayout.pushedEdge(CGPoint(x: 700, y: 899), on: main, among: []), "no bottom edge")
+    // Another display to the right: that edge leads on to it, so it doesn't count.
+    let side = CGRect(x: 1440, y: 0, width: 1920, height: 1080)
+    XCTAssertNil(StashLayout.pushedEdge(CGPoint(x: 1439, y: 400), on: main, among: [side]))
+    XCTAssertEqual(StashLayout.pushedEdge(CGPoint(x: 3359, y: 400), on: side, among: [main]), .right)
+  }
+
+  func testTornNotesAreNotes() {
+    XCTAssertTrue(StashTabLook.torn.isNote)
+    XCTAssertEqual(layout(.left, .torn).tabSize, layout(.left, .note).tabSize)
+    XCTAssertFalse(StashOpen.hover.isClick)
+    XCTAssertTrue(StashOpen.peek.isClick)
+  }
+
+  func testATornEdgeIsTheSameEachTime() {
+    let rect = CGRect(x: 0, y: 0, width: 104, height: 30)
+    let a = TornPaperShape(seed: 42, depth: 3.5).path(in: rect)
+    XCTAssertEqual(a, TornPaperShape(seed: 42, depth: 3.5).path(in: rect))
+    XCTAssertNotEqual(a, TornPaperShape(seed: 43, depth: 3.5).path(in: rect))
+    // Ragged only along the bottom, and never deeper than asked.
+    XCTAssertEqual(a.boundingRect.minY, 0)
+    XCTAssertGreaterThanOrEqual(a.boundingRect.maxY, 30 - 3.5)
+    XCTAssertLessThanOrEqual(a.boundingRect.maxY, 30)
+  }
+
+  func testPreviewsKeepTheWindowsShape() {
+    let wide = StashPeekView.size(for: CGSize(width: 1600, height: 800))
+    let tall = StashPeekView.size(for: CGSize(width: 600, height: 1200))
+    XCTAssertEqual(wide.width, tall.width)
+    XCTAssertLessThan(wide.height, tall.height)
+    XCTAssertLessThanOrEqual(tall.height, 300)
+  }
+
   func testSlotNames() {
     XCTAssertEqual(StashSlot(name: "bottom"), .end)
     XCTAssertEqual(StashSlot(name: "Left"), .start)
@@ -181,7 +220,10 @@ final class StashLayoutTests: XCTestCase {
     XCTAssertTrue(HotkeyIdentifier.stashLeft.enabledByDefault)
     XCTAssertFalse(HotkeyIdentifier.windowShortcutGroup.contains(.stashRight))
     let combos = HotkeyIdentifier.allCases.map(\.defaultCombination)
-    for stash in [HotkeyIdentifier.stashLeft, .stashRight, .stashTop] {
+    XCTAssertTrue(HotkeyIdentifier.stashNext.isStash)
+    XCTAssertTrue(HotkeyIdentifier.windowIdentifiers.contains(.stashNext))
+    XCTAssertFalse(HotkeyIdentifier.windowShortcutGroup.contains(.stashNext))
+    for stash in [HotkeyIdentifier.stashLeft, .stashRight, .stashTop, .stashNext] {
       XCTAssertEqual(combos.filter { $0 == stash.defaultCombination }.count, 1, "\(stash) shares its default key")
     }
   }

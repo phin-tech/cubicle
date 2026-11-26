@@ -14,15 +14,18 @@ final class StashSettingsViewController: NSViewController {
   private let openPopUp = NSPopUpButton()
   private let hidePopUp = NSPopUpButton()
   private let minimizePopUp = NSPopUpButton()
+  private let dragCheckbox = NSButton(
+    checkboxWithTitle: "Hold it against the left, right or top edge, then let go, to stash it", target: nil, action: nil)
   private let shortcuts = NSTextField(labelWithString: "")
   private var observers: [NSObjectProtocol] = []
   private var cancellables = Set<AnyCancellable>()
 
   override func loadView() {
-    view = NSView(frame: NSRect(x: 0, y: 0, width: 550, height: 470))
+    view = NSView(frame: NSRect(x: 0, y: 0, width: 550, height: 500))
     let description = NSTextField(wrappingLabelWithString:
       "Stash a window against the left, right or top edge. It tucks away behind a Tab there, on every workspace, and "
-      + "comes out when you point at or click the Tab. Drag a Tab to move it, and right-click it for more.")
+      + "comes out when you point at or click the Tab. Drag a Tab to move it, drag it away to unstash, and right-click "
+      + "it for more. A preview needs Screen Recording.")
     description.textColor = .secondaryLabelColor
 
     for look in StashTabLook.allCases { lookPopUp.addItem(withTitle: look.displayName) }
@@ -39,6 +42,8 @@ final class StashSettingsViewController: NSViewController {
     minimizePopUp.target = self
     minimizePopUp.action = #selector(minimizeChanged(_:))
     minimizePopUp.toolTip = "Hold any modifier key while clicking to minimize as usual."
+    dragCheckbox.target = self
+    dragCheckbox.action = #selector(dragChanged(_:))
     shortcuts.textColor = .secondaryLabelColor
 
     let scroll = NSScrollView()
@@ -55,8 +60,9 @@ final class StashSettingsViewController: NSViewController {
     let openRow = row([NSTextField(labelWithString: "Open a window by:"), openPopUp])
     let hideRow = row([NSTextField(labelWithString: "Hide it again when:"), hidePopUp])
     let minimizeRow = row([NSTextField(labelWithString: "The minimize button:"), minimizePopUp])
+    let dragRow = row([NSTextField(labelWithString: "Dragging a window:"), dragCheckbox])
     let shortcutsRow = row([NSTextField(labelWithString: "Shortcuts:"), shortcuts])
-    for subview in [description, lookRow, openRow, hideRow, minimizeRow, shortcutsRow, scroll] as [NSView] {
+    for subview in [description, lookRow, openRow, hideRow, minimizeRow, dragRow, shortcutsRow, scroll] as [NSView] {
       subview.translatesAutoresizingMaskIntoConstraints = false
       view.addSubview(subview)
     }
@@ -72,7 +78,9 @@ final class StashSettingsViewController: NSViewController {
       hideRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
       minimizeRow.topAnchor.constraint(equalTo: hideRow.bottomAnchor, constant: 8),
       minimizeRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-      shortcutsRow.topAnchor.constraint(equalTo: minimizeRow.bottomAnchor, constant: 8),
+      dragRow.topAnchor.constraint(equalTo: minimizeRow.bottomAnchor, constant: 8),
+      dragRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      shortcutsRow.topAnchor.constraint(equalTo: dragRow.bottomAnchor, constant: 8),
       shortcutsRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
       scroll.topAnchor.constraint(equalTo: shortcutsRow.bottomAnchor, constant: 16),
       scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
@@ -124,10 +132,11 @@ final class StashSettingsViewController: NSViewController {
     openPopUp.selectItem(at: StashOpen.allCases.firstIndex(of: Stash.shared.openOn) ?? 0)
     hidePopUp.selectItem(at: StashHide.allCases.firstIndex(of: Stash.shared.hideWhen) ?? 0)
     minimizePopUp.selectItem(at: MinimizeCatcher.edge.flatMap { StashEdge.allCases.firstIndex(of: $0) }.map { $0 + 1 } ?? 0)
+    dragCheckbox.state = StashDragCatcher.isOn ? .on : .off
     let store = HotkeyStore.shared
-    shortcuts.stringValue = [HotkeyIdentifier.stashLeft, .stashRight, .stashTop].map { id in
+    shortcuts.stringValue = [HotkeyIdentifier.stashLeft, .stashRight, .stashTop, .stashNext].map { id in
       let keys = store.isEnabled(id) ? store.combination(for: id).displayString : "off"
-      return "\(id.stashEdge!.rawValue.capitalized) \(keys)"
+      return "\(id.stashEdge?.rawValue.capitalized ?? "Next") \(keys)"
     }.joined(separator: "   ") + "   (change them in Keyboard)"
 
     for item in stack.arrangedSubviews {
@@ -248,7 +257,13 @@ final class StashSettingsViewController: NSViewController {
 
   @objc private func openChanged(_ sender: NSPopUpButton) {
     guard StashOpen.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
-    UserDefaults.standard.set(StashOpen.allCases[sender.indexOfSelectedItem].rawValue, forKey: StashOpen.defaultsKey)
+    let open = StashOpen.allCases[sender.indexOfSelectedItem]
+    UserDefaults.standard.set(open.rawValue, forKey: StashOpen.defaultsKey)
+    if open == .peek { StashPeek.requestAccess() }
+  }
+
+  @objc private func dragChanged(_ sender: NSButton) {
+    StashDragCatcher.isOn = sender.state == .on
   }
 
   @objc private func hideChanged(_ sender: NSPopUpButton) {

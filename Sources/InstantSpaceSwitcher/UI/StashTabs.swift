@@ -45,6 +45,8 @@ struct StashTabsView: View {
     /// Which of its app's stashed windows on this edge it is, when there's more than one.
     let number: Int?
     let isOut: Bool
+    /// The app's Dock badge (an unread count, say), if it has one.
+    var badge: String?
     /// Being dragged along the edge: drawn lifted, and the rest of the edge left alone.
     var isDragged = false
   }
@@ -57,9 +59,9 @@ struct StashTabsView: View {
   var body: some View {
     let tabs = ForEach(items) { item in
       Group {
-        if look == .note {
+        if look.isNote {
           StashNote(item: item, edge: edge, length: edge.isVertical ? tabSize.height : tabSize.width,
-                    thickness: edge.isVertical ? tabSize.width : tabSize.height)
+                    thickness: edge.isVertical ? tabSize.width : tabSize.height, torn: look == .torn)
         } else {
           StashTab(item: item, edge: edge, look: look)
         }
@@ -119,38 +121,72 @@ private struct StashTab: View {
           .offset(x: 3, y: 3)
       }
     }
+    .overlay(alignment: .topTrailing) {
+      if let badge = item.badge { StashBadge(text: badge).offset(x: 5, y: -5) }
+    }
+  }
+}
+
+/// An app's Dock badge, drawn as the Dock draws it: white on red.
+struct StashBadge: View {
+  let text: String
+
+  var body: some View {
+    Text(text.count > 4 ? String(text.prefix(3)) + "…" : text)
+      .font(.system(size: 9, weight: .bold))
+      .foregroundStyle(.white)
+      .lineLimit(1)
+      .padding(.horizontal, 4)
+      .frame(minWidth: 14, minHeight: 14)
+      .background(Capsule().fill(Color.red))
+      .overlay(Capsule().stroke(Color.white.opacity(0.9), lineWidth: 1))
+      .fixedSize()
   }
 }
 
 /// A sticky note in the app's colour, its name written along the edge: turned to read upwards on the left edge and
-/// downwards on the right, flat along the top. It leans a touch, as a note stuck on by hand does.
+/// downwards on the right, flat along the top. It leans a touch, as a note stuck on by hand does. A torn note's
+/// outer side is ragged, as if ripped off a pad, with the paper's paler fibres showing along the tear.
+///
+/// It's drawn flat, as on the top edge, and turned for the sides: its bottom is always the side facing the screen.
 private struct StashNote: View {
   let item: StashTabsView.Item
   let edge: StashEdge
   let length: CGFloat
   let thickness: CGFloat
+  var torn = false
 
   var body: some View {
     let text = Color(nsColor: StashNoteColor.text(on: item.color))
+    let paper = TornPaperShape(seed: item.id, depth: torn ? 3.5 : 0)
     let label = HStack(spacing: 4) {
       Text(item.appName)
-        .font(.system(size: 12, weight: .semibold, design: .rounded))
+        .font(.system(size: 12, weight: .semibold, design: torn ? .serif : .rounded))
         .lineLimit(1)
         .truncationMode(.tail)
       if let number = item.number {
         Text("\(number)").font(.system(size: 10, weight: .bold, design: .rounded)).opacity(0.6)
       }
+      if let badge = item.badge { StashBadge(text: badge) }
     }
     .foregroundStyle(text)
     .padding(.horizontal, 8)
+    .padding(.bottom, torn ? 3 : 0)
     .frame(width: length, height: thickness)
     .background(
-      LinearGradient(
-        colors: [Color(nsColor: item.color), Color(nsColor: item.color.blended(withFraction: 0.08, of: .black) ?? item.color)],
-        startPoint: .top, endPoint: .bottom))
+      ZStack {
+        LinearGradient(
+          colors: [Color(nsColor: item.color), Color(nsColor: item.color.blended(withFraction: 0.08, of: .black) ?? item.color)],
+          startPoint: .top, endPoint: .bottom)
+        if torn {
+          // The fibres along the tear: paler paper, just inside the ragged edge.
+          TornPaperShape(seed: item.id, depth: 3.5, tearOnly: true).stroke(Color.white.opacity(0.55), lineWidth: 2.5)
+        }
+      }
+      .clipShape(paper))
     .overlay(alignment: .bottom) {
       // The note's out-edge, a line in the window's accent while it's popped out.
-      if item.isOut { Rectangle().fill(Color.accentColor).frame(height: 3) }
+      if item.isOut { Rectangle().fill(Color.accentColor).frame(height: 3).padding(.bottom, torn ? 4 : 0) }
     }
     .rotationEffect(.degrees(item.isDragged ? 0 : lean), anchor: .bottom)
     .shadow(color: .black.opacity(item.isDragged ? 0.35 : 0.22), radius: item.isDragged ? 4 : 1.5, x: 0, y: 1)
@@ -161,8 +197,56 @@ private struct StashNote: View {
       .frame(width: edge.isVertical ? thickness : length, height: edge.isVertical ? length : thickness)
   }
 
-  /// Up to a degree either way, the same each time for a window.
-  private var lean: Double { Double(Int(item.id % 5) - 2) * 0.5 }
+  /// Up to a degree either way, the same each time for a window; a torn scrap leans a little more.
+  private var lean: Double { Double(Int(item.id % 5) - 2) * (torn ? 0.9 : 0.5) }
+}
+
+/// A strip of paper whose bottom is ripped: a jagged line of uneven teeth, the same for a window each time it's drawn.
+/// With no `depth`, a plain rectangle. `tearOnly` gives just the ragged line, to draw along it.
+struct TornPaperShape: Shape {
+  var seed: UInt32
+  var depth: CGFloat
+  var tearOnly = false
+
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    if !tearOnly {
+      path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+      path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+    }
+    guard depth > 0 else {
+      path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+      path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+      path.closeSubpath()
+      return path
+    }
+    var random = SeededRandom(seed: UInt64(seed) &+ 0x9E37_79B9)
+    let start = CGPoint(x: rect.maxX, y: rect.maxY - random.next() * depth)
+    if tearOnly { path.move(to: start) } else { path.addLine(to: start) }
+    var x = rect.maxX
+    while x > rect.minX {
+      x = max(rect.minX, x - 2.5 - random.next() * 4.5)
+      path.addLine(to: CGPoint(x: x, y: rect.maxY - random.next() * depth))
+    }
+    if !tearOnly { path.closeSubpath() }
+    return path
+  }
+}
+
+/// A small repeatable random sequence (SplitMix64), in 0..<1.
+struct SeededRandom {
+  private var state: UInt64
+
+  init(seed: UInt64) { state = seed }
+
+  mutating func next() -> CGFloat {
+    state &+= 0x9E37_79B9_7F4A_7C15
+    var z = state
+    z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+    z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+    z ^= z >> 31
+    return CGFloat(z >> 11) / CGFloat(1 << 53)
+  }
 }
 
 /// Rounded on the sides away from the screen's edge, square against it (Slaps' `EdgeShape`, with a top edge).

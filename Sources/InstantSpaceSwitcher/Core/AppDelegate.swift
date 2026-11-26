@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Before the workspaces, so they leave stashed windows alone.
     Stash.shared.start()
     MinimizeCatcher.shared.update()
+    StashDragCatcher.shared.update()
     VirtualWorkspaces.shared.start()
     FullScreen.shared.didStartWorkspaces()
     SwipeSwitcher.shared.setEnabled(SwipeSwitcher.isEnabledSetting)
@@ -381,6 +382,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WindowPicker.shared.toggle()
       case .stashLeft, .stashRight, .stashTop:
         if !Stash.shared.stash(identifier.stashEdge!).ok { NSSound.beep() }
+      case .stashNext:
+        if !Stash.shared.showNext().ok { NSSound.beep() }
       case .togglePause:
         let paused = StackManager.shared.spaceKeyUnderCursor().map(StackingStore.shared.isPaused) ?? false
         let outcome = StackManager.shared.setPaused(!paused, everywhere: false)

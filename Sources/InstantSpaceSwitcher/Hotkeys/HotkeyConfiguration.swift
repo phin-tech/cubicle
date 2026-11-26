@@ -458,11 +458,12 @@ enum HotkeyIdentifier: String, CaseIterable {
   case moveWorkspaceToNextDisplay
   case newWorkspaceFromWindows
   case stashLeft, stashRight, stashTop
+  case stashNext
 
   /// Off until you turn it on: moving windows is experimental, and the snap and stacking keys would take over ⌃⌥
   /// keys other apps use.
   var enabledByDefault: Bool {
-    self == .newWorkspaceFromWindows || stashEdge != nil
+    self == .newWorkspaceFromWindows || isStash
       || (self != .sendWindow && !Self.windowIdentifiers.contains(self))
   }
 
@@ -515,10 +516,13 @@ enum HotkeyIdentifier: String, CaseIterable {
     }
   }
 
+  /// The stash shortcuts: the three edges and bringing out the next stashed window.
+  var isStash: Bool { stashEdge != nil || self == .stashNext }
+
   /// The window shortcuts, kept in one dictionary: the snaps and the stacking ones.
   static var windowIdentifiers: [HotkeyIdentifier] {
     allCases.filter {
-      $0.snapAction != nil || $0.isStacking || $0.stashEdge != nil || $0 == .moveWorkspaceToNextDisplay
+      $0.snapAction != nil || $0.isStacking || $0.isStash || $0 == .moveWorkspaceToNextDisplay
         || $0 == .newWorkspaceFromWindows
     }
   }
@@ -527,7 +531,7 @@ enum HotkeyIdentifier: String, CaseIterable {
   /// what Cubicle does rather than acting once.
   static var windowShortcutGroup: [HotkeyIdentifier] {
     windowIdentifiers.filter {
-      ![.togglePause, .moveWorkspaceToNextDisplay, .newWorkspaceFromWindows].contains($0) && $0.stashEdge == nil
+      ![.togglePause, .moveWorkspaceToNextDisplay, .newWorkspaceFromWindows].contains($0) && !$0.isStash
     }
   }
 
@@ -564,6 +568,7 @@ enum HotkeyIdentifier: String, CaseIterable {
     case .moveWorkspaceToNextDisplay: return "Move workspace to the next display"
     case .newWorkspaceFromWindows: return "New workspace from picked windows…"
     case .stashLeft, .stashRight, .stashTop: return "\(stashEdge!.displayName) (or unstash)"
+    case .stashNext: return "Open the next stashed window"
     default: return "Snap window: \(snapAction!.displayName)"
     }
   }
@@ -921,6 +926,11 @@ extension HotkeyIdentifier {
       return HotkeyCombination(
         keyCode: UInt32(keyCode), modifiers: UInt32(controlKey | optionKey | cmdKey), displayKey: key,
         keyEquivalent: key)
+    case .stashNext:
+      // ⌃⌥⌘', beside the stash keys.
+      return HotkeyCombination(
+        keyCode: UInt32(kVK_ANSI_Quote), modifiers: UInt32(controlKey | optionKey | cmdKey), displayKey: "'",
+        keyEquivalent: "'")
     default:
       if let snapAction { return .defaultSnap(snapAction) }
       if isStacking { return .defaultStacking(self) }
