@@ -349,6 +349,43 @@ final class Stash {
     for entry in entries { _ = unstash(entry.id) }
   }
 
+  /// The stashed windows as the CLI and Alfred see them.
+  func entriesForCLI() -> [CubicleStashedEntry] {
+    entries.map { entry in
+      let app = NSRunningApplication(processIdentifier: entry.pid)
+      let window = target(entry.id)
+      let appName = window?.appName ?? app?.localizedName ?? "Window"
+      return CubicleStashedEntry(
+        id: entry.id, app: appName, title: window?.title ?? "", name: entry.name, edge: entry.edge.rawValue,
+        isOut: out == entry.id, badge: DockBadges.badge(for: app, in: badges))
+    }
+  }
+
+  /// The stashed window `selector` picks: by id, by app, or the one that's out.
+  private func stashedID(_ selector: WindowSnapper.Selector) -> UInt32? {
+    switch selector {
+    case .window(let id): return contains(id) ? id : nil
+    case .app(let name): return entries.first { matches($0, app: name) }?.id
+    case .focused, .previous: return out ?? WindowMover.focusedWindow().map(\.windowID).flatMap { contains($0) ? $0 : nil }
+    }
+  }
+
+  /// Brings a stashed window out and keeps it out, as clicking its Tab does.
+  func open(_ selector: WindowSnapper.Selector) -> WindowSnapper.Outcome {
+    guard let id = stashedID(selector) else { return .init(ok: false, message: "That window isn't stashed.") }
+    popOut(id)
+    pinned = true
+    return .init(ok: true, message: target(id)?.displayName ?? "Stashed window")
+  }
+
+  /// Names the Tab of the stashed window `selector` picks.
+  func rename(_ selector: WindowSnapper.Selector, to name: String?) -> WindowSnapper.Outcome {
+    guard let id = stashedID(selector) else { return .init(ok: false, message: "That window isn't stashed.") }
+    rename(id, to: name)
+    let named = entry(id)?.name
+    return .init(ok: true, message: named.map { "Named its Tab “\($0)”." } ?? "Its Tab shows the app's name again.")
+  }
+
   /// The stashed windows, for the CLI: edge, app and title.
   func list() -> [(edge: StashEdge, id: UInt32, name: String)] {
     entries.map { entry in

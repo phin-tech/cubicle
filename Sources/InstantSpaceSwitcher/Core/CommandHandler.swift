@@ -52,11 +52,26 @@ enum CommandHandler {
       let outcome = Stash.shared.stash(edge, slot: slot, selector(for: request))
       return CubicleResponse(ok: outcome.ok, message: outcome.message)
     case "unstash":
+      if request.all == true {
+        let count = Stash.shared.list().count
+        Stash.shared.unstashAll()
+        return CubicleResponse(ok: true, message: count == 0 ? "No windows are stashed." : "Unstashed \(count).")
+      }
       let outcome = Stash.shared.unstash(selector(for: request))
       return CubicleResponse(ok: outcome.ok, message: outcome.message)
     case "stashed":
-      let lines = Stash.shared.list().map { "\($0.edge.rawValue.padding(toLength: 6, withPad: " ", startingAt: 0)) \($0.id)  \($0.name)" }
-      return CubicleResponse(ok: true, message: lines.isEmpty ? "No windows are stashed." : lines.joined(separator: "\n"))
+      let entries = Stash.shared.entriesForCLI()
+      let lines = entries.map {
+        "\($0.edge.padding(toLength: 6, withPad: " ", startingAt: 0)) \($0.id)  \($0.name ?? $0.title)\($0.isOut ? "  (out)" : "")"
+      }
+      return CubicleResponse(
+        ok: true, message: lines.isEmpty ? "No windows are stashed." : lines.joined(separator: "\n"), stashed: entries)
+    case "open-stashed":
+      let outcome = request.argument == "next" ? Stash.shared.showNext() : Stash.shared.open(selector(for: request))
+      return CubicleResponse(ok: outcome.ok, message: outcome.message)
+    case "rename-tab":
+      let outcome = Stash.shared.rename(selector(for: request), to: request.argument)
+      return CubicleResponse(ok: outcome.ok, message: outcome.message)
     case "windows":
       guard AXIsProcessTrusted() else {
         return CubicleResponse(ok: false, message: "Accessibility is not granted to Cubicle.")

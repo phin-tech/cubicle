@@ -33,6 +33,33 @@ public struct CubicleRequest: Codable, Equatable {
   }
 }
 
+/// A stashed window, for `cubicle stashed --json` and Alfred.
+public struct CubicleStashedEntry: Codable, Equatable {
+  public var id: UInt32
+  public var app: String
+  public var title: String
+  /// The name given to its Tab, if any.
+  public var name: String?
+  /// `left`, `right` or `top`.
+  public var edge: String
+  /// Popped out now.
+  public var isOut: Bool
+  /// Its app's Dock badge.
+  public var badge: String?
+
+  public init(
+    id: UInt32, app: String, title: String, name: String?, edge: String, isOut: Bool, badge: String?
+  ) {
+    self.id = id
+    self.app = app
+    self.title = title
+    self.name = name
+    self.edge = edge
+    self.isOut = isOut
+    self.badge = badge
+  }
+}
+
 /// A window, for `cubicle windows`: every workspace's, with the workspace it's on.
 public struct CubicleWindowEntry: Codable, Equatable {
   /// The window server's number for the window, which `--window` takes.
@@ -97,14 +124,17 @@ public struct CubicleResponse: Codable, Equatable {
   public var message: String?
   public var spaces: [CubicleSpaceEntry]?
   public var windows: [CubicleWindowEntry]?
+  public var stashed: [CubicleStashedEntry]?
 
   public init(
-    ok: Bool, message: String? = nil, spaces: [CubicleSpaceEntry]? = nil, windows: [CubicleWindowEntry]? = nil
+    ok: Bool, message: String? = nil, spaces: [CubicleSpaceEntry]? = nil, windows: [CubicleWindowEntry]? = nil,
+    stashed: [CubicleStashedEntry]? = nil
   ) {
     self.ok = ok
     self.message = message
     self.spaces = spaces
     self.windows = windows
+    self.stashed = stashed
   }
 }
 

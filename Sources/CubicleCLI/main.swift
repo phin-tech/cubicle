@@ -25,10 +25,15 @@ let usage = """
                         the Tab at the top, middle or bottom of the edge (left, centre or right along the top;
                         dragging the Tab does the same). Stashing it against the same edge again unstashes it;
                         another edge or position moves its Tab.
-    unstash [--app <name>|--window <id>|--previous]
+    unstash [--app <name>|--window <id>|--previous|--all]
                         Put a stashed window back where it was, on the workspace showing (default: the
-                        window that's popped out, else the focused one)
-    stashed             List the stashed windows, with their edges and ids
+                        window that's popped out, else the focused one); --all unstashes every one
+    stashed [--json]    List the stashed windows, with their edges and ids
+    open-stashed [next|--app <name>|--window <id>]
+                        Bring a stashed window out and keep it out; next opens the one after the window
+                        that's out (the first if none is), and after the last tucks it away
+    rename-tab [name] [--app <name>|--window <id>]
+                        Name a stashed window's Tab; no name goes back to the app's name
     windows [--json]    List the windows on the current workspace, with the ids --window takes
     actions [--json|--alfred] [query]
                         List the window commands; --alfred prints them for Alfred's "w" keyword
@@ -376,13 +381,33 @@ case "stash":
     previous: target.previous ? true : nil)), command)
 
 case "unstash":
-  let target = windowTarget(rest)
-  guard target.rest.isEmpty else { fail("Usage: cubicle unstash [--app <name>|--window <id>|--previous]") }
+  let all = rest.contains("--all")
+  let target = windowTarget(rest.filter { $0 != "--all" })
+  guard target.rest.isEmpty else { fail("Usage: cubicle unstash [--app <name>|--window <id>|--previous|--all]") }
   report(send(CubicleRequest(
-    command: "unstash", app: target.app, window: target.window, previous: target.previous ? true : nil)), command)
+    command: "unstash", app: target.app, window: target.window, previous: target.previous ? true : nil,
+    all: all ? true : nil)), command)
 
 case "stashed":
-  report(send(CubicleRequest(command: "stashed")), command)
+  if let unknown = rest.first(where: { $0 != "--json" }) { fail("Unknown option '\(unknown)'.\n\n\(usage)") }
+  let response = send(CubicleRequest(command: "stashed"))
+  guard response.ok else { fail(response.message ?? "stashed failed") }
+  if rest.contains("--json") { printJSON(response.stashed ?? []) } else if let message = response.message { print(message) }
+
+case "open-stashed":
+  let target = windowTarget(rest)
+  guard target.rest.isEmpty || target.rest == ["next"] else {
+    fail("Usage: cubicle open-stashed [next|--app <name>|--window <id>]")
+  }
+  report(send(CubicleRequest(
+    command: "open-stashed", argument: target.rest.first, app: target.app, window: target.window,
+    previous: target.previous ? true : nil)), command)
+
+case "rename-tab":
+  let target = windowTarget(rest)
+  report(send(CubicleRequest(
+    command: "rename-tab", argument: target.rest.joined(separator: " "), app: target.app, window: target.window,
+    previous: target.previous ? true : nil)), command)
 
 case "windows":
   if let unknown = rest.first(where: { $0 != "--json" }) { fail("Unknown option '\(unknown)'.\n\n\(usage)") }
