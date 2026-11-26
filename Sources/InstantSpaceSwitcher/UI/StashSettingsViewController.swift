@@ -11,6 +11,7 @@ private final class FlippedStackView: NSStackView {
 final class StashSettingsViewController: NSViewController {
   private let stack = FlippedStackView()
   private let lookPopUp = NSPopUpButton()
+  private let fontPopUp = NSPopUpButton()
   private let openPopUp = NSPopUpButton()
   private let hidePopUp = NSPopUpButton()
   private let minimizePopUp = NSPopUpButton()
@@ -21,7 +22,7 @@ final class StashSettingsViewController: NSViewController {
   private var cancellables = Set<AnyCancellable>()
 
   override func loadView() {
-    view = NSView(frame: NSRect(x: 0, y: 0, width: 550, height: 500))
+    view = NSView(frame: NSRect(x: 0, y: 0, width: 550, height: 530))
     let description = NSTextField(wrappingLabelWithString:
       "Stash a window against the left, right or top edge. It tucks away behind a Tab there, on every workspace, and "
       + "comes out when you point at or click the Tab. Drag a Tab to move it, drag it away to unstash, and right-click "
@@ -31,6 +32,9 @@ final class StashSettingsViewController: NSViewController {
     for look in StashTabLook.allCases { lookPopUp.addItem(withTitle: look.displayName) }
     lookPopUp.target = self
     lookPopUp.action = #selector(lookChanged(_:))
+    fillFonts()
+    fontPopUp.target = self
+    fontPopUp.action = #selector(fontChanged(_:))
     for open in StashOpen.allCases { openPopUp.addItem(withTitle: open.displayName) }
     openPopUp.target = self
     openPopUp.action = #selector(openChanged(_:))
@@ -57,12 +61,13 @@ final class StashSettingsViewController: NSViewController {
     scroll.documentView = stack
 
     let lookRow = row([NSTextField(labelWithString: "Tabs:"), lookPopUp])
+    let fontRow = row([NSTextField(labelWithString: "Font:"), fontPopUp])
     let openRow = row([NSTextField(labelWithString: "Open a window by:"), openPopUp])
     let hideRow = row([NSTextField(labelWithString: "Hide it again when:"), hidePopUp])
     let minimizeRow = row([NSTextField(labelWithString: "The minimize button:"), minimizePopUp])
     let dragRow = row([NSTextField(labelWithString: "Dragging a window:"), dragCheckbox])
     let shortcutsRow = row([NSTextField(labelWithString: "Shortcuts:"), shortcuts])
-    for subview in [description, lookRow, openRow, hideRow, minimizeRow, dragRow, shortcutsRow, scroll] as [NSView] {
+    for subview in [description, lookRow, fontRow, openRow, hideRow, minimizeRow, dragRow, shortcutsRow, scroll] as [NSView] {
       subview.translatesAutoresizingMaskIntoConstraints = false
       view.addSubview(subview)
     }
@@ -72,7 +77,9 @@ final class StashSettingsViewController: NSViewController {
       description.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
       lookRow.topAnchor.constraint(equalTo: description.bottomAnchor, constant: 14),
       lookRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-      openRow.topAnchor.constraint(equalTo: lookRow.bottomAnchor, constant: 8),
+      fontRow.topAnchor.constraint(equalTo: lookRow.bottomAnchor, constant: 8),
+      fontRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+      openRow.topAnchor.constraint(equalTo: fontRow.bottomAnchor, constant: 8),
       openRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
       hideRow.topAnchor.constraint(equalTo: openRow.bottomAnchor, constant: 8),
       hideRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
@@ -129,6 +136,12 @@ final class StashSettingsViewController: NSViewController {
 
   private func show() {
     lookPopUp.selectItem(at: StashTabLook.allCases.firstIndex(of: Stash.shared.look) ?? 0)
+    let font = StashTabFont.chosen
+    if let item = fontPopUp.itemArray.first(where: { $0.representedObject as? String == font }) {
+      fontPopUp.select(item)
+    } else {
+      fontPopUp.selectItem(at: 0)
+    }
     openPopUp.selectItem(at: StashOpen.allCases.firstIndex(of: Stash.shared.openOn) ?? 0)
     hidePopUp.selectItem(at: StashHide.allCases.firstIndex(of: Stash.shared.hideWhen) ?? 0)
     minimizePopUp.selectItem(at: MinimizeCatcher.edge.flatMap { StashEdge.allCases.firstIndex(of: $0) }.map { $0 + 1 } ?? 0)
@@ -253,6 +266,36 @@ final class StashSettingsViewController: NSViewController {
   @objc private func lookChanged(_ sender: NSPopUpButton) {
     guard StashTabLook.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
     UserDefaults.standard.set(StashTabLook.allCases[sender.indexOfSelectedItem].rawValue, forKey: StashTabLook.defaultsKey)
+  }
+
+  /// The styles and handwriting faces first, each shown in itself, then every installed family.
+  private func fillFonts() {
+    let menu = NSMenu()
+    func add(_ id: String, _ name: String) {
+      let item = NSMenuItem(title: name, action: nil, keyEquivalent: "")
+      item.representedObject = id
+      item.attributedTitle = NSAttributedString(
+        string: name, attributes: [.font: StashTabFont.nsFont(id, size: NSFont.systemFontSize)])
+      menu.addItem(item)
+    }
+    let families = Set(NSFontManager.shared.availableFontFamilies)
+    for preset in StashTabFont.presets
+    where ["", "system", "rounded", "serif", "mono"].contains(preset.id) || families.contains(preset.id) {
+      add(preset.id, preset.name)
+    }
+    menu.addItem(.separator())
+    let listed = Set(StashTabFont.presets.map(\.id))
+    for family in families.sorted() where !family.hasPrefix(".") && !listed.contains(family) {
+      let item = NSMenuItem(title: family, action: nil, keyEquivalent: "")
+      item.representedObject = family
+      menu.addItem(item)
+    }
+    fontPopUp.menu = menu
+  }
+
+  @objc private func fontChanged(_ sender: NSPopUpButton) {
+    guard let id = sender.selectedItem?.representedObject as? String else { return }
+    UserDefaults.standard.set(id, forKey: StashTabFont.defaultsKey)
   }
 
   @objc private func openChanged(_ sender: NSPopUpButton) {

@@ -33,6 +33,15 @@ enum DockBadges {
     return app.bundleURL.flatMap { badges[$0.standardizedFileURL.path] }
   }
 
+  /// Whether a badge changing from `old` to `new` is news worth a wiggle: a badge appearing, a count going up, or a
+  /// label that isn't a count changing. A count going down, or the badge going, is you catching up.
+  nonisolated static func isNews(from old: String?, to new: String?) -> Bool {
+    guard let new, new != old else { return false }
+    guard let old else { return true }
+    if let was = Int(old.filter(\.isNumber)), let now = Int(new.filter(\.isNumber)) { return now > was }
+    return true
+  }
+
   /// Bundle identifiers by path, so the Dock's items aren't read from disk every time.
   private static var identifiers: [String: String] = [:]
 

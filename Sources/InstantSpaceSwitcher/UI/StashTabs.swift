@@ -33,6 +33,49 @@ final class StashPanel: NSPanel {
   }
 }
 
+/// The font Tabs write in: chosen in Settings → Stash, from a few styles and handwriting faces or any installed family.
+/// Automatic is the system's rounded face on a note, a serif on torn paper and the plain system face otherwise.
+enum StashTabFont {
+  static let defaultsKey = "stashTabFont"
+
+  /// The choices Settings lists first: an identifier (empty for Automatic, a style, or a family name) and its name.
+  static let presets: [(id: String, name: String)] = [
+    ("", "Automatic"), ("system", "System"), ("rounded", "Rounded"), ("serif", "Serif"), ("mono", "Monospaced"),
+    ("Noteworthy", "Noteworthy"), ("Marker Felt", "Marker Felt"), ("Chalkboard SE", "Chalkboard"),
+    ("Bradley Hand", "Bradley Hand"), ("Comic Sans MS", "Comic Sans"),
+  ]
+
+  static var chosen: String { UserDefaults.standard.string(forKey: defaultsKey) ?? "" }
+
+  static func font(_ chosen: String, size: CGFloat, weight: Font.Weight, look: StashTabLook) -> Font {
+    switch chosen {
+    case "": return .system(size: size, weight: weight, design: look == .torn ? .serif : look == .note ? .rounded : .default)
+    case "system": return .system(size: size, weight: weight)
+    case "rounded": return .system(size: size, weight: weight, design: .rounded)
+    case "serif": return .system(size: size, weight: weight, design: .serif)
+    case "mono": return .system(size: size, weight: weight, design: .monospaced)
+    default:
+      // A family that has gone (uninstalled) falls back to Automatic.
+      guard NSFontManager.shared.availableMembers(ofFontFamily: chosen) != nil else {
+        return font("", size: size, weight: weight, look: look)
+      }
+      return .custom(chosen, size: size).weight(weight)
+    }
+  }
+
+  /// The same, for drawing a menu item in it.
+  static func nsFont(_ chosen: String, size: CGFloat) -> NSFont {
+    let base = NSFont.systemFont(ofSize: size)
+    let design: NSFontDescriptor.SystemDesign? =
+      chosen == "rounded" ? .rounded : chosen == "serif" ? .serif : chosen == "mono" ? .monospaced : nil
+    if let design, let descriptor = base.fontDescriptor.withDesign(design) {
+      return NSFont(descriptor: descriptor, size: size) ?? base
+    }
+    if chosen.isEmpty || chosen == "system" || design != nil { return base }
+    return NSFontManager.shared.font(withFamily: chosen, traits: [], weight: 5, size: size) ?? base
+  }
+}
+
 struct StashTabsView: View {
   struct Item: Identifiable {
     let id: UInt32
@@ -47,6 +90,8 @@ struct StashTabsView: View {
     let isOut: Bool
     /// The app's Dock badge (an unread count, say), if it has one.
     var badge: String?
+    /// Goes up each time the badge brings news; the Tab wiggles when it does.
+    var wiggles = 0
     /// Being dragged along the edge: drawn lifted, and the rest of the edge left alone.
     var isDragged = false
   }
@@ -55,18 +100,22 @@ struct StashTabsView: View {
   let edge: StashEdge
   let look: StashTabLook
   let tabSize: CGSize
+  var font = StashTabFont.chosen
 
   var body: some View {
     let tabs = ForEach(items) { item in
       Group {
         if look.isNote {
           StashNote(item: item, edge: edge, length: edge.isVertical ? tabSize.height : tabSize.width,
-                    thickness: edge.isVertical ? tabSize.width : tabSize.height, torn: look == .torn)
+                    thickness: edge.isVertical ? tabSize.width : tabSize.height, torn: look == .torn,
+                    font: StashTabFont.font(font, size: 12, weight: .semibold, look: look))
         } else {
-          StashTab(item: item, edge: edge, look: look)
+          StashTab(item: item, edge: edge, look: look, font: StashTabFont.font(font, size: 12, weight: .medium, look: look))
         }
       }
       .frame(width: tabSize.width, height: tabSize.height)
+      .modifier(Wiggle(amount: CGFloat(item.wiggles)))
+      .animation(.linear(duration: 0.7), value: item.wiggles)
       .opacity(item.isDragged ? 0.85 : 1)
     }
     if edge.isVertical {
@@ -81,6 +130,7 @@ private struct StashTab: View {
   let item: StashTabsView.Item
   let edge: StashEdge
   let look: StashTabLook
+  let font: Font
 
   var body: some View {
     let shape = EdgeTabShape(edge: edge, radius: 8)
@@ -88,7 +138,7 @@ private struct StashTab: View {
       icon
       if look == .labelled {
         Text(item.title)
-          .font(.system(size: 12, weight: .medium))
+          .font(font)
           .lineLimit(1)
           .truncationMode(.tail)
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -127,6 +177,26 @@ private struct StashTab: View {
   }
 }
 
+/// A shake that dies away, each time `amount` goes up by one: a few quick turns either way about the Tab's middle.
+struct Wiggle: GeometryEffect {
+  var amount: CGFloat
+
+  var animatableData: CGFloat {
+    get { amount }
+    set { amount = newValue }
+  }
+
+  func effectValue(size: CGSize) -> ProjectionTransform {
+    let progress = amount - amount.rounded(.down)
+    guard progress > 0 else { return ProjectionTransform() }
+    let angle = sin(progress * .pi * 8) * (1 - progress) * 0.16
+    let transform = CGAffineTransform(translationX: size.width / 2, y: size.height / 2)
+      .rotated(by: angle)
+      .translatedBy(x: -size.width / 2, y: -size.height / 2)
+    return ProjectionTransform(transform)
+  }
+}
+
 /// An app's Dock badge, drawn as the Dock draws it: white on red.
 struct StashBadge: View {
   let text: String
@@ -155,13 +225,14 @@ private struct StashNote: View {
   let length: CGFloat
   let thickness: CGFloat
   var torn = false
+  var font = Font.system(size: 12, weight: .semibold, design: .rounded)
 
   var body: some View {
     let text = Color(nsColor: StashNoteColor.text(on: item.color))
     let paper = TornPaperShape(seed: item.id, depth: torn ? 3.5 : 0)
     let label = HStack(spacing: 4) {
       Text(item.appName)
-        .font(.system(size: 12, weight: .semibold, design: torn ? .serif : .rounded))
+        .font(font)
         .lineLimit(1)
         .truncationMode(.tail)
       if let number = item.number {

@@ -170,6 +170,16 @@ final class StashLayoutTests: XCTestCase {
     XCTAssertLessThanOrEqual(tall.height, 300)
   }
 
+  func testTabsWiggleForNewsOnly() {
+    XCTAssertTrue(DockBadges.isNews(from: nil, to: "1"))
+    XCTAssertTrue(DockBadges.isNews(from: "2", to: "3"))
+    XCTAssertTrue(DockBadges.isNews(from: "99", to: "1,024"))
+    XCTAssertFalse(DockBadges.isNews(from: "3", to: "2"), "catching up")
+    XCTAssertFalse(DockBadges.isNews(from: "3", to: nil))
+    XCTAssertFalse(DockBadges.isNews(from: "3", to: "3"))
+    XCTAssertTrue(DockBadges.isNews(from: "!", to: "•"))
+  }
+
   func testSlotNames() {
     XCTAssertEqual(StashSlot(name: "bottom"), .end)
     XCTAssertEqual(StashSlot(name: "Left"), .start)

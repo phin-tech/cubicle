@@ -64,6 +64,9 @@ final class Stash {
   private let hint = StashPanel()
   /// The badges on stashed apps' Dock icons, by app (see `DockBadges`).
   private var badges: [String: String] = [:]
+  /// How many times each window's Tab has wiggled for news on its app's badge; a new count sets it off again.
+  private var wiggles: [UInt32: Int] = [:]
+  private var badgesRead = false
   /// The window being previewed beside its Tab, and the last picture of each window (see `StashPeek`).
   private var peeking: UInt32?
   private let peek = StashPeekPanel()
@@ -720,7 +723,7 @@ final class Stash {
     return .init(
       id: entry.id, icon: app?.icon, title: title, appName: appName,
       color: look.isNote ? StashNoteColor.color(for: app) : .clear, number: number, isOut: out == entry.id,
-      badge: DockBadges.badge(for: app, in: badges))
+      badge: DockBadges.badge(for: app, in: badges), wiggles: wiggles[entry.id] ?? 0)
   }
 
   /// Puts up a panel for each place with Tabs, sized to them, and takes away the rest. Windows whose display has
@@ -763,20 +766,29 @@ final class Stash {
     }
   }
 
-  private var lastLook: StashTabLook?
+  private var lastLook: String?
   private func lookMayHaveChanged() {
-    guard look != lastLook else { return }
-    lastLook = look
+    let now = "\(look.rawValue)|\(StashTabFont.chosen)"
+    guard now != lastLook else { return }
+    lastLook = now
     refresh()
   }
 
   private func tick() {
     prune()
-    let now = entries.isEmpty ? [:] : DockBadges.current()
-    if now != badges {
-      badges = now
-      refresh()
+    guard !entries.isEmpty else { return }
+    let now = DockBadges.current()
+    guard now != badges else { return }
+    // The first read after launch is what was there already, not news.
+    for entry in entries where badgesRead {
+      let app = NSRunningApplication(processIdentifier: entry.pid)
+      if DockBadges.isNews(from: DockBadges.badge(for: app, in: badges), to: DockBadges.badge(for: app, in: now)) {
+        wiggles[entry.id, default: 0] += 1
+      }
     }
+    badges = now
+    badgesRead = true
+    refresh()
   }
 
   /// Forgets windows that have closed.
@@ -792,6 +804,7 @@ final class Stash {
       if peeking == entry.id { hidePeek() }
       elements[entry.id] = nil
       pictures[entry.id] = nil
+      wiggles[entry.id] = nil
     }
     entries.removeAll { entry in gone.contains(entry) }
     save()
